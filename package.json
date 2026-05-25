@@ -1,0 +1,87 @@
+{
+  "name": "@aimro/projexor",
+  "version": "0.0.0",
+  "description": "A foundation for building code-aware tools that exposes project structure, AST data, file operations, and command execution as clean, composeable functions any program can import and use.",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mts",
+  "types": "./dist/index.d.mts",
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish",
+    "prepare": "husky"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SaleamlakH/projexor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SaleamlakH/projexor/issues"
+  },
+  "homepage": "https://github.com/SaleamlakH/projexor#readme",
+  "author": "Sale Habtamu <saleamlak.7h@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "ast",
+    "code-intelligence",
+    "project-structure",
+    "file-operations",
+    "mcp",
+    "mcp-server",
+    "ai-tools",
+    "ai-agent",
+    "typescript",
+    "developer-tools",
+    "code-analysis",
+    "codebase"
+  ],
+  "dependencies": {
+    "execa": "^9.6.1",
+    "ts-morph": "^28.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
+    "prettier": "^3.8.3",
+    "tsdown": "^0.22.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.4",
+    "vitest": "^4.1.7"
+  }
+}
