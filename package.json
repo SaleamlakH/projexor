@@ -42,7 +42,7 @@
     "node": ">=22.0.0"
   },
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   },
   "repository": {
     "type": "git",
