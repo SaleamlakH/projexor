@@ -17,17 +17,14 @@ export class FileExistsError extends ProjexorError {
   constructor(filePath: string) {
     super(
       'FILE_ALREADY_EXISTS',
-      `couldn't create ${filePath}, it is already exist`,
+      `couldn't create ${filePath}, it already exist`,
     );
   }
 }
 
 export class NodeNotFoundError extends ProjexorError {
   constructor(nodeName: string) {
-    super(
-      'NODE_NOT_FOUND',
-      `couldn't find AST node with name ${nodeName} name `,
-    );
+    super('NODE_NOT_FOUND', `couldn't find AST node ${nodeName}`);
   }
 }
 
