@@ -1,7 +1,23 @@
-export class ProjexorError extends Error {
-  code;
+export const ErrorCode = {
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  FILE_ALREADY_EXISTS: 'FILE_ALREADY_EXISTS',
+  NODE_NOT_FOUND: 'NODE_NOT_FOUND',
+  PARSE_FAILED: 'PARSE_FAILED',
+  PARSER_NOT_FOUND: 'PARSER_NOT_FOUND',
+  UNSUPPORTED_LANGUAGE: 'UNSUPPORTED_LANGUAGE',
+  COMMAND_FAILED: 'COMMAND_FAILED',
+  COMMAND_TIMEOUT: 'COMMAND_TIMEOUT',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  INVALID_OPERATION: 'INVALID_OPERATION',
+  PATH_OUTSIDE_ROOT: 'PATH_OUTSIDE_ROOT',
+} as const;
 
-  constructor(code: string, message: string) {
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export class ProjexorError extends Error {
+  code: ErrorCode;
+
+  constructor(code: ErrorCode, message: string) {
     super(message);
     this.code = code;
   }
@@ -9,14 +25,17 @@ export class ProjexorError extends Error {
 
 export class FileNotFoundError extends ProjexorError {
   constructor(filePath: string) {
-    super('FILE_NOT_FOUND', `couldn't find a file with path ${filePath}`);
+    super(
+      ErrorCode.FILE_NOT_FOUND,
+      `couldn't find a file with path ${filePath}`,
+    );
   }
 }
 
 export class FileExistsError extends ProjexorError {
   constructor(filePath: string) {
     super(
-      'FILE_ALREADY_EXISTS',
+      ErrorCode.FILE_ALREADY_EXISTS,
       `couldn't create ${filePath}, it already exist`,
     );
   }
@@ -24,20 +43,20 @@ export class FileExistsError extends ProjexorError {
 
 export class NodeNotFoundError extends ProjexorError {
   constructor(nodeName: string) {
-    super('NODE_NOT_FOUND', `couldn't find AST node ${nodeName}`);
+    super(ErrorCode.NODE_NOT_FOUND, `couldn't find AST node ${nodeName}`);
   }
 }
 
 export class ParseFailedError extends ProjexorError {
   constructor(filePath: string) {
-    super('PARSE_FAILED', `couldn't parse AST of ${filePath}`);
+    super(ErrorCode.PARSE_FAILED, `couldn't parse AST of ${filePath}`);
   }
 }
 
 export class ParserNotFoundError extends ProjexorError {
   constructor(parserName: string) {
     super(
-      'PARSER_NOT_FOUND',
+      ErrorCode.PARSER_NOT_FOUND,
       `couldn't find ${parserName} for AST parser. required to install appropriate dependency`,
     );
   }
@@ -45,14 +64,14 @@ export class ParserNotFoundError extends ProjexorError {
 
 export class UnsupportedLanguageError extends ProjexorError {
   constructor() {
-    super('UNSUPPORTED_LANGUAGE', 'extension has no registered parser');
+    super(ErrorCode.UNSUPPORTED_LANGUAGE, 'extension has no registered parser');
   }
 }
 
 export class CommandFailedError extends ProjexorError {
   constructor() {
     super(
-      'COMMAND_FAILED',
+      ErrorCode.COMMAND_FAILED,
       'could not execute command, process exited with non zero code',
     );
   }
@@ -60,14 +79,14 @@ export class CommandFailedError extends ProjexorError {
 
 export class CommandTimeout extends ProjexorError {
   constructor() {
-    super('COMMAND_TIMEOUT', 'command process exceed timeout');
+    super(ErrorCode.COMMAND_TIMEOUT, 'command process exceed timeout');
   }
 }
 
 export class PermissionDeniedError extends ProjexorError {
   constructor(filePath: string) {
     super(
-      'PERMISSION_DENIED',
+      ErrorCode.PERMISSION_DENIED,
       `could not perform operation on ${filePath}, permission denied`,
     );
   }
@@ -76,7 +95,7 @@ export class PermissionDeniedError extends ProjexorError {
 export class InvalidOperationError extends ProjexorError {
   constructor() {
     super(
-      'INVALID_OPERATION',
+      ErrorCode.INVALID_OPERATION,
       'Invalid line range or malformed operation parameters',
     );
   }
@@ -84,6 +103,6 @@ export class InvalidOperationError extends ProjexorError {
 
 export class PathOutsideRootError extends ProjexorError {
   constructor() {
-    super('PATH_OUTSIDE_ROOT', 'Path attempts to escape the root');
+    super(ErrorCode.PATH_OUTSIDE_ROOT, 'Path attempts to escape the root');
   }
 }
