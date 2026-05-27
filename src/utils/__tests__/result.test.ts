@@ -8,7 +8,7 @@ describe('result utilities', () => {
     expect(result).toEqual({ success: true, data: { id: 1 } });
   });
 
-  it('createFailure should return success response', () => {
+  it('createFailure should return failure response', () => {
     const result = createFailure('TEST_CODE', 'test error');
 
     expect(result).toEqual({
