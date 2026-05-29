@@ -25,10 +25,7 @@ export class ProjexorError extends Error {
 
 export class FileNotFoundError extends ProjexorError {
   constructor(filePath: string) {
-    super(
-      ErrorCode.FILE_NOT_FOUND,
-      `couldn't find a file with path ${filePath}`,
-    );
+    super(ErrorCode.FILE_NOT_FOUND, `Path not found, ${filePath}`);
   }
 }
 
