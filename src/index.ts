@@ -51,7 +51,7 @@ export const loadProject = ({
   }: GetStructureArgs): Promise<
     SuccessResult<ProjectStructure> | FailureResult
   > => {
-    const mergedIgnore = [];
+    const mergedIgnore: string[] = [];
 
     if (defaultIgnore) {
       mergedIgnore.push(...defaultIgnore);
@@ -61,10 +61,14 @@ export const loadProject = ({
       mergedIgnore.push(...ignore);
     }
 
+    const normalizedIgnore = mergedIgnore.map((entry) =>
+      entry.startsWith('/') ? join(projectRoot, entry) : entry,
+    );
+
     return getDirStructure(
       {
         path: join(projectRoot, path),
-        ...(mergedIgnore.length && { ignore: mergedIgnore }),
+        ...(normalizedIgnore.length && { ignore: normalizedIgnore }),
       },
       fsAdapter,
     );
