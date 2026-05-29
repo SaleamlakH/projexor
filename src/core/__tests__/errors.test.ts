@@ -7,6 +7,7 @@ import {
   FileNotFoundError,
   InvalidOperationError,
   NodeNotFoundError,
+  NotDirectoryError,
   ParseFailedError,
   ParserNotFoundError,
   PathOutsideRootError,
@@ -43,6 +44,12 @@ describe('ProjexorError subclasses', () => {
       ErrorClass: FileNotFoundError,
       args: ['file.txt'],
       expectedCode: ErrorCode.FILE_NOT_FOUND,
+      expectedMessagePart: 'file.txt',
+    },
+    {
+      ErrorClass: NotDirectoryError,
+      args: ['file.txt'],
+      expectedCode: ErrorCode.NOT_A_DIRECTORY,
       expectedMessagePart: 'file.txt',
     },
     {
