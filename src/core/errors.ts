@@ -1,5 +1,6 @@
 export const ErrorCode = {
   FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  NOT_A_DIRECTORY: 'NOT_A_DIRECTORY',
   FILE_ALREADY_EXISTS: 'FILE_ALREADY_EXISTS',
   NODE_NOT_FOUND: 'NODE_NOT_FOUND',
   PARSE_FAILED: 'PARSE_FAILED',
@@ -25,10 +26,13 @@ export class ProjexorError extends Error {
 
 export class FileNotFoundError extends ProjexorError {
   constructor(filePath: string) {
-    super(
-      ErrorCode.FILE_NOT_FOUND,
-      `couldn't find a file with path ${filePath}`,
-    );
+    super(ErrorCode.FILE_NOT_FOUND, `Path not found, ${filePath}`);
+  }
+}
+
+export class NotDirectoryError extends ProjexorError {
+  constructor(path: string) {
+    super(ErrorCode.NOT_A_DIRECTORY, `Not a directory, ${path}`);
   }
 }
 
