@@ -9,12 +9,12 @@ export default defineConfig(
   {
     rules: {
       'no-console': 'error',
-      '@typescript-eslint/explicit-function-return-type': [
-        'error',
-        { allowExpressions: true },
-      ],
+      '@typescript-eslint/explicit-module-boundary-types': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
     },
+  },
+  {
+    ignores: ['**/fixtures', 'dist/**'],
   },
 );
