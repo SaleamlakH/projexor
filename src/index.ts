@@ -1,14 +1,7 @@
-import type {
-  FailureResult,
-  ProjectStructure,
-  SuccessResult,
-} from './core/types';
-import {
-  getStructure as getDirStructure,
-  type GetStructureArgs,
-} from './structure/getStructure';
+import { getStructure as getDirStructure } from './structure/getStructure';
 import { fsAdapter } from './adapters/nodeFs.adapter';
 import { join } from 'path';
+import { parseAst as parser } from './ast/parseAst';
 
 type LoadProjectArgs = {
   projectRoot: string;
@@ -33,24 +26,28 @@ interface LoadProjectReturnObject {
    * ```
    */
 
-  getStructure({
-    path,
-    ignore,
-  }: GetStructureArgs): Promise<
-    SuccessResult<ProjectStructure> | FailureResult
-  >;
+  getStructure: typeof getDirStructure;
+
+  /**
+   * parse ast of a list of file paths, which are `relative` to the project root
+   *
+   * ```ts
+   * parseAst(['/src/index.ts', '/src/javascript.js'])
+   *
+   * // specify the languages to ignore others
+   * // only get the ast of `ts` files
+   * parseAst(['/src/index.ts', 'src/javascript.js'], {languages: ['ts']} )
+   *
+   * ```
+   */
+  parseAst: typeof parser;
 }
 
 export const loadProject = ({
   projectRoot,
   defaultIgnore,
 }: LoadProjectArgs): LoadProjectReturnObject => {
-  const getStructure = async ({
-    path,
-    ignore,
-  }: GetStructureArgs): Promise<
-    SuccessResult<ProjectStructure> | FailureResult
-  > => {
+  const getStructure: typeof getDirStructure = async ({ path, ignore }) => {
     const mergedIgnore: string[] = [];
 
     if (defaultIgnore) {
@@ -74,5 +71,10 @@ export const loadProject = ({
     );
   };
 
-  return { getStructure };
+  const parseAst: typeof parser = (files, options) => {
+    const fullPaths = files ? files.map((file) => join(projectRoot, file)) : [];
+    return parser(fullPaths, options);
+  };
+
+  return { getStructure, parseAst };
 };
