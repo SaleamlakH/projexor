@@ -3,6 +3,7 @@ import mapper from './languages/mapper';
 import { createFailure, createSuccess } from '../utils/result';
 import type { ParserOptions, ParserResult, SupportedLanguages } from './types';
 import { ProjexorError } from '../core/errors';
+import path from 'path';
 
 export function parseAst<L extends SupportedLanguages = SupportedLanguages>(
   files: string[],
@@ -14,7 +15,9 @@ export function parseAst<L extends SupportedLanguages = SupportedLanguages>(
   // group file by language
   const groups: Partial<Record<SupportedLanguages, string[]>> = {};
   for (const file of files) {
-    const ext = file.split('.').pop();
+    const base = path.basename(file);
+    const ext = path.extname(base).slice(1);
+
     if (!ext) continue;
 
     if (langs && !langs.includes(ext as L)) {

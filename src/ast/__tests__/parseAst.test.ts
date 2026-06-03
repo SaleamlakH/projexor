@@ -22,6 +22,38 @@ describe('parseAst', () => {
     vi.resetAllMocks();
   });
 
+  const mockParsers = () => {
+    vi.mocked(mapper.ts).mockImplementation((files) => {
+      return files.reduce((acc: Record<string, ASTResult>, file) => {
+        acc[file] = {
+          filePath: file,
+          lines: 0,
+          imports: [],
+          exports: [],
+          classes: [],
+          functions: [],
+          supported: true,
+        };
+        return acc;
+      }, {});
+    });
+
+    vi.mocked(mapper.js).mockImplementation((files) => {
+      return files.reduce((acc: Record<string, ASTResult>, file) => {
+        acc[file] = {
+          filePath: file,
+          lines: 0,
+          imports: [],
+          exports: [],
+          classes: [],
+          functions: [],
+          supported: true,
+        };
+        return acc;
+      }, {});
+    });
+  };
+
   it('call the correct parser for a language', () => {
     parseAst(['a.ts', 'b.ts', 'c.js']);
 
@@ -48,21 +80,7 @@ describe('parseAst', () => {
   });
 
   it('return correct success result structure', () => {
-    vi.mocked(mapper.ts).mockImplementation((files) => {
-      return files.reduce((acc: Record<string, ASTResult>, file) => {
-        acc[file] = {
-          filePath: file,
-          lines: 0,
-          imports: [],
-          exports: [],
-          classes: [],
-          functions: [],
-          supported: true,
-        };
-
-        return acc;
-      }, {});
-    });
+    mockParsers();
 
     const result = parseAst(['a.ts']);
     expect(result.success).toBe(true);
@@ -90,20 +108,7 @@ describe('parseAst', () => {
   });
 
   it('exclude other languages if language list is given', () => {
-    vi.mocked(mapper.ts).mockImplementation((files) => {
-      return files.reduce((acc: Record<string, ASTResult>, file) => {
-        acc[file] = {
-          filePath: file,
-          lines: 0,
-          imports: [],
-          exports: [],
-          classes: [],
-          functions: [],
-          supported: true,
-        };
-        return acc;
-      }, {});
-    });
+    mockParsers();
 
     const result = parseAst(['a.ts', 'b.js'], { languages: ['ts'] });
 
@@ -124,6 +129,38 @@ describe('parseAst', () => {
 
     expect(result.success).toBe(true);
     expect(mapper.ts).toHaveBeenCalledWith([]);
+  });
+
+  it('ignore extension-less files or dotted directory paths', () => {
+    mockParsers();
+
+    const inputFiles = [
+      'src/index.ts',
+      'LICENSE',
+      'Makefile',
+      'foo.bar/baz.js',
+      'config.d/settings',
+    ];
+
+    const result = parseAst(inputFiles);
+
+    expect(result.success).toBe(true);
+
+    const data = (result as SuccessResult<ParserResult>).data;
+    expect(data).toMatchObject({
+      ts: {
+        'src/index.ts': expect.any(Object),
+      },
+      js: {
+        'foo.bar/baz.js': expect.any(Object),
+      },
+    });
+
+    // expect(data).not.toHaveProperty('');
+    expect(data).not.toHaveProperty('LICENSE');
+    expect(data).not.toHaveProperty('Makefile');
+    expect(data).not.toHaveProperty('settings');
+    expect(Object.keys(data)).not.toContain('');
   });
 
   it('return empty success when no files', () => {
