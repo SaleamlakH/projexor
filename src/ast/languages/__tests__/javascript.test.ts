@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as path from 'path';
-import { parse } from '../typescript';
+import { parse } from '../javascript';
 import type { ASTResult } from '../../../core/types';
 
 const FIXTURE_PATH = path.resolve(__dirname, './fixtures/javascript.js');
@@ -15,7 +15,9 @@ describe('javascript parser', () => {
 
     result = parsed[FIXTURE_PATH] as ASTResult;
 
-    expect(result.filePath.endsWith('/fixtures/javascript.js')).toBe(true);
+    const expectedSuffix = path.join('fixtures', 'javascript.js');
+
+    expect(result.filePath.endsWith(expectedSuffix)).toBe(true);
   });
 
   // ---- functions inferred return types ----

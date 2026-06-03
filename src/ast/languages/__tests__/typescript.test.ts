@@ -15,7 +15,9 @@ describe('typescript parser', () => {
 
     result = parsed[FIXTURE_PATH] as ASTResult;
 
-    expect(result.filePath.endsWith('/fixtures/typescript.ts')).toBe(true);
+    const expectedSuffix = path.join('fixtures', 'typescript.ts');
+
+    expect(result.filePath.endsWith(expectedSuffix)).toBe(true);
     expect(result.lines).toBe(116);
     expect(result.supported).toBe(true);
   });
