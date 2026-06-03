@@ -308,7 +308,7 @@ const createSerializers = (
           endLine: getLine(declaration.getEnd()),
         });
 
-        return;
+        continue;
       }
 
       emitExportIfNeeded(node, { name, line, type: 'variable' });
