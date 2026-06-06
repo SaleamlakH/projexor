@@ -1,26 +1,34 @@
 export const ErrorCode = {
-  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  INVALID_PATH: 'INVALID_PATH',
+  DIRECTORY_NOT_FOUND: 'DIRECTORY_NOT_FOUND',
   NOT_A_DIRECTORY: 'NOT_A_DIRECTORY',
-  FILE_ALREADY_EXISTS: 'FILE_ALREADY_EXISTS',
-  NODE_NOT_FOUND: 'NODE_NOT_FOUND',
+  NOT_A_FILE: 'NOT_A_FILE',
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  PATH_OUTSIDE_ROOT: 'PATH_OUTSIDE_ROOT',
   PARSE_FAILED: 'PARSE_FAILED',
   PARSER_NOT_FOUND: 'PARSER_NOT_FOUND',
   UNSUPPORTED_LANGUAGE: 'UNSUPPORTED_LANGUAGE',
-  COMMAND_FAILED: 'COMMAND_FAILED',
   COMMAND_TIMEOUT: 'COMMAND_TIMEOUT',
   PERMISSION_DENIED: 'PERMISSION_DENIED',
+  INVALID_RANGE: 'INVALID_RANGE',
   INVALID_OPERATION: 'INVALID_OPERATION',
-  PATH_OUTSIDE_ROOT: 'PATH_OUTSIDE_ROOT',
+
+  FILE_ALREADY_EXISTS: 'FILE_ALREADY_EXISTS',
+  NODE_NOT_FOUND: 'NODE_NOT_FOUND',
+  COMMAND_FAILED: 'COMMAND_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export class ProjexorError extends Error {
-  code: ErrorCode;
+  readonly code: ErrorCode;
+  readonly cause?: unknown;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: ErrorCode, message: string, cause?: unknown) {
     super(message);
+    this.name = 'ProjexorError';
     this.code = code;
+    this.cause = cause;
   }
 }
 
