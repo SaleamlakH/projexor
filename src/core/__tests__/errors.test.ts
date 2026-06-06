@@ -27,7 +27,7 @@ describe('ProjexorError', () => {
     expect(err).toBeInstanceOf(ProjexorError);
     expect(err.code).toBe(ErrorCode.FILE_NOT_FOUND);
     expect(err.message).toBe('test message error');
-    expect(err.name).toBe('Error');
+    expect(err.name).toBe('ProjexorError');
   });
 });
 
