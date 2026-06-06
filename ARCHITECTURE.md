@@ -1,477 +1,245 @@
-# Projexor — Architecture
+# Architecture
 
-This document captures every architectural decision made for Projexor. It is the source of truth for how the system is built, why decisions were made, and what rules must never be violated.
+This document exists for contributors. It explains why the system is built the way it is, the rules that must not be violated, and the boundaries that must not be crossed. The public API is documented in [`docs/api.md`](docs/api.md). The data models are in [`docs/models.md`](docs/models.md).
 
 ---
 
 ## Table of Contents
 
-- [What It Is](#what-it-is)
-- [Design Decisions](#design-decisions)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Module Responsibilities](#module-responsibilities)
-- [API Reference](#api-reference)
-- [Data Model](#data-model)
-- [Error Handling](#error-handling)
-- [Input Validation](#input-validation)
-- [Versioning Policy](#versioning-policy)
+- [Overview](#overview)
+- [Architectural Principles](#architectural-principles)
+- [Directory Structure & Module Topology](#directory-structure--module-topology)
+- [Data Flow & Execution Lifecycle](#data-flow--execution-lifecycle)
+- [Public API Surface & Extension Points](#public-api-surface--extension-points)
 
 ---
 
-## What It Is
+## Overview
 
-A Node.js TypeScript library that gives developers building MCP servers and similar tools the plumbing they need out of the box — project structure traversal, AST parsing, file I/O, and command execution — so they can focus on their tool logic instead of wiring these primitives together from scratch.
+Projexor is a library for developers building AI coding tools, MCP servers, and other code-aware tools. It provides project structure traversal, AST parsing, file I/O, and command execution.
 
-`loadProject` is the primary and only way to use the library. It sets the project root and enforces a strict boundary — no operation can escape outside the root path. Language is never specified by the caller — it is detected automatically from file extensions.
+The motivation for this project is to have execution and inspection layer for developers building AI infrastructure like MCP servers. Agents need to work with codebases the way a careful developer would, **understanding structure before acting, operating within boundaries, never touching more than necessary** instead of relying on broad, token-heavy file dumps. And AI chat interfaces need real codebase context without the developer manually copying files into the conversation.
 
-**Primary user:** a developer building an MCP server who currently has to manually wire together file walking, AST parsing, and file I/O from scratch every time.
+### What it provides
 
-**Biggest risk:** tools built on top of this library don't deliver meaningfully better results than existing AI coding agents (Claude Code, Cursor, etc.) — so developers don't see enough reason to build with it.
+Four capabilities, composable in any order:
+
+- **Structure**: walk a directory tree and understand what exists
+
+- **AST parsing**: understand what specific files contain at the structural level, without reading raw source
+
+- **File I/O**: read and write files with precise line-level control.
+
+- **Command execution**: run commands within the project boundary. Act on the codebase in a controlled way.
+
+They are designed to be used in sequence, structure first, then AST, then targeted read/write. An agent that follows this pattern touches only what it understands and changes only what it intends to.
+
+### Who uses it
+
+Developers building AI coding tools, MCP servers, and any system that needs structured, bounded access to a codebase without wiring these primitives together from scratch every time.
+
+### Scope Boundary
+
+Projexor is a foundation layer. It does not make decisions about what to read or write. It does not interpret code semantically. It does not communicate with any AI model. It provides the primitives and enforces the constraints.
 
 ---
 
-## Design Decisions
+## Architectural Principles
 
-### `loadProject` is the only entry point
+These principles are not preferences. Every one of them has a reason, and every one of them affects how the library behaves for the tools built on top of it. A contributor adding a new operation or extending an existing one must understand and follow all of them.
 
-Standalone functions without a project context introduce path ambiguity — relative to what? `loadProject` sets the root once, resolves all paths against it, and enforces a strict boundary. Standalone functions may be added in a future version based on real developer demand, not assumption.
+### Single entry point
 
-### Language is detected from file extension
+[`loadProject`](docs/api.md#loadproject) is the only way to use the library. `loadProject` sets the project root once, and every subsequent operation is resolved and checked against it. A standalone function has no root to resolve against, which means no boundary to enforce.
 
-No caller ever specifies a language. The language mapper reads the file extension and picks the correct parser. This solves mixed-language projects naturally — each file is handled by the right parser without any caller configuration.
+### Understanding structure before acting
+
+The four capabilities are sequenced deliberately. Structure tells you what files exist. AST tells you what those files contain and where. File I/O operates on specific positions identified by AST. This sequence is not enforced by the API. The caller can call them in any order but it is the intended pattern.
+
+### Operating within boundaries
+
+Every resolved path is checked against the project root before any operation proceeds. A path that escapes the root throws `PATH_OUTSIDE_ROOT` immediately. This is the most important invariant in the library.
+
+This boundary also will be implemented for commands that will affecting the environment outside root.
+
+### Language is always detected, never specified
+
+No caller ever passes a language identifier. The library reads the file extension and selects the correct parser.
+
+This is what makes Projexor usable on polyglot codebases — a real-world requirement for any AI coding tool. Adding language support means adding to the registry, not changing any calling convention.
+
+This solves mixed-language projects without any configuration. When a new language is added, it will be added to the registry and becomes available automatically.
+
+### AST output is always normalized
+
+Raw parser nodes are never returned to callers. The normalizer maps parser internals to the defined schema. Callers are coupled to the schema, not to the underlying parser. This means the parser can be swapped, upgraded, or replaced without breaking any tool built on top of Projexor. The schema is an API contract. Any change to it after release is a breaking change.
 
 ### Feature modules never call each other
 
-All cross-feature orchestration lives exclusively in `index.ts`. This keeps modules independently testable and prevents cascading coupling as the library grows.
+All cross-feature orchestration lives exclusively in `src/index.ts`. `structure/` never calls `ast/`. `ast/` never calls `files/`. This keeps every module independently testable and prevents coupling that compounds invisibly as the library grows. If you find yourself importing one feature module from another, the orchestration belongs in `index.ts`.
 
-### `getStructure` with `ast: true` is orchestrated in `index.ts`
+### Fail fast on bad input, tolerant on operational failures
 
-`structure/` returns the file tree. `ast/` parses files. Neither calls the other. When both are needed, `index.ts` calls each in sequence and combines the results.
+Bad inputs, such as wrong path, missing required argument, invalid operation, throws immediately before any work begins.
 
-### AST output is always normalized — never raw parser nodes
+Operational failures during list processing, a file that cannot be parsed, a language with no registered parser, go into an `errors` map and processing continues. The caller decides what to do with failures.
 
-Callers must never be coupled to `ts-morph` or any underlying parser. The normalizer owns the mapping from parser nodes to the defined JSON schema. Swapping parsers in the future must not break callers.
+### Command execution never uses shell interpolation
 
-### Error strategy — throw for programmer errors, FailureResult for runtime failures
+`execa` is called with `shell: false` always. No exceptions. Shell interpolation is a security boundary that must not be crossed, especially in a library that is designed to be driven by an AI agent. Arguments are always passed as a discrete array.
 
-Wrong types and missing required arguments throw immediately via Zod validation. File not found, parse failures, and command errors return a `FailureResult`. The caller decides what to do with failures — the library never decides for them.
-
-### Language parsers are peer dependencies
-
-Installing Projexor does not install parser libraries. Each language parser is installed only if the developer chooses to use that language. This keeps the base install lightweight.
-
----
-
-## Tech Stack
-
-| Layer             | Choice                               | Reason                                                                                             |
-| ----------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Language          | TypeScript                           | Type safety for both internals and the public API                                                  |
-| AST parsing       | ts-morph                             | Clean wrapper over the TS Compiler API, no native bindings, TS/JS only initially                   |
-| Input validation  | Zod                                  | Declarative schemas, precise error messages, handles conditional parameter requirements cleanly    |
-| Build             | tsup                                 | Dual ESM/CJS output, minimal config, industry standard for libraries                               |
-| Testing           | Vitest                               | ESM-native, fast, seamless with TypeScript and tsup                                                |
-| Package manager   | npm                                  | Universal, no extra tooling                                                                        |
-| Command execution | execa                                | `shell: false` by default, promise-based, built-in timeout support, clean stdout/stderr as strings |
-| Linting           | ESLint + `@typescript-eslint/strict` | Strict type-aware linting, catches bugs before they ship                                           |
-| Formatting        | Prettier                             | Opinionated, zero-debate formatting                                                                |
-| Git hooks         | Husky + lint-staged                  | Blocks bad commits, runs checks only on staged files                                               |
-| Versioning        | Changesets                           | Automated versioning, changelog generation, and npm publishing                                     |
-| CI                | GitHub Actions                       | Workflow dispatcher for versioning and releasing                                                   |
-| Runtime           | Node.js                              | —                                                                                                  |
-
----
-
-## Project Structure
+## Directory Structure & Module Topology
 
 ```
 projexor/
 ├── src/
-│   ├── index.ts
-│   ├── core/
-│   │   ├── types.ts
-│   │   ├── errors.ts
-│   │   └── utils/
-│   ├── structure/
-│   │   ├── __tests__/
-│   │   └── getStructure.ts
-│   ├── languages/
-│   ├── ast/
-│   ├── files/
-│   └── commands/
-│
-├── tests/
-│   ├── integration/
-│   │   └── loadProject.test.ts
-│   └── fixtures/
-│       ├── typescript.ts
-│       └── javascript.js
-│
-├── .changeset/
-├── .github/
-├── package.json
-├── tsconfig.json
-├── tsdown.config.ts
-├── vitest.config.ts
-├── CHANGELOG.md
-├── README.md
-└── ARCHITECTURE.md
+│   ├── index.ts        # loadProject factory and all cross-feature orchestration
+│   ├── core/           # shared types, error codes, error class
+│   ├── structure/      # directory traversal and file tree construction
+│   ├── ast/            # parseAST orchestration
+│   │   ├── languages/      # language registry, extension mapping, per-language parsers
+│   ├── files/          # readFile and writeFile
+│   └── commands/       # runCommand
+└── docs/               # public-facing documentation
 ```
+
+### Import hierarchy
+
+Strict. Never violated.
+
+```
+index.ts        → all feature modules
+feature modules → core/ only
+core/           → nothing outside core/
+```
+
+Feature modules never import from each other. `index.ts` is the only file that composes them. `core/` is pure definitions. it has no dependencies on feature modules.
+
+## Data Flow & Execution Lifecycle
+
+### [loadProject](docs/api.md#loadproject)
+
+Synchronous. Validates that the path is absolute, exists, is a directory and is within the root directory. Resolves it to an absolute path. Stores the resolved root, ignore patterns, and parser options in a closure. Returns a plain `ProjectContext` object with all operations as closures bound to the root.
+
+### Validation order — every operation
+
+Every operation follows this sequence before doing any work:
+
+```
+1. path resolve against root
+2. boundary check    → throw PATH_OUTSIDE_ROOT if outside root
+3. existence check   → throw FILE_NOT_FOUND or DIRECTORY_NOT_FOUND if missing
+4. type check        → throw NOT_A_DIRECTORY or NOT_A_FILE if wrong type
+5. proceed
+```
+
+### List operations — pre-flight vs processing
+
+For [`parseAst`](docs/api.md#parseast) called with a list of paths, all paths are pre-flight validated before any parsing begins. If any path fails the boundary or existence check, the entire call throws immediately. Only failures that occur during processing go into the `errors` map. Processing continues for remaining files.
+
+### AST parsing (TS/JS) — single file vs list
+
+Single file calls use `ts.createSourceFile` lightweight, no program context needed. List calls use `ts.createProgram` one instantiation for the entire batch, which is significantly more efficient than creating a source file per file. Both produce `TSASTResult` via the same normalizer. The caller never sees this distinction.
+
+### File I/O — streaming and atomicity
+
+[`readFile`](docs/api.md#readfile) with a line range uses a single streaming pass. The stream is destroyed immediately when the end line is reached. Only the requested lines are held in memory at any point.
+
+[`writeFile`](docs/api.md#writefile) uses a single streaming pass through the original file into a tmp file, then an atomic rename. The rename is atomic at the OS level on the same filesystem. A crash before the rename leaves the original untouched. A crash after leaves a harmless orphaned tmp file. The file is either fully written or unchanged.
+
+### Command execution — buffered and streaming
+
+[`runCommand`](docs/api.md#runcommand) operates in two modes depending on whether `onOutput` callback is provided. Buffered mode accumulates all output and returns it after the process exits. Streaming mode fires `onOutput` with each chunk in real time and still returns the full [`CommandResult`](docs/models.md#commandresult) after exit. `runCommand` never throws on non-zero exit codes except for `timeout`. `exitCode` is always returned and the caller decides what to do with it.
+
+### [Error handling](docs/errors.md)
+
+All errors thrown by the library are instances of [`ProjexorError`](docs/errors.md#projexorerror) with a stable `code` field drawn from the `ErrorCode` const object. No subclasses. The `code` field is safe to switch on. An optional `cause` field carries the underlying error when one exists. `COMMAND_TIMEOUT` carries the partial output written before the process was killed.
+
+`ErrorCode` is exported as both a value (`import { ErrorCode }`) and a type (`import type { ErrorCode }`).
+
+See [`docs/errors.md`](docs/errors.md) for the full error code registry.
 
 ---
 
-## Module Responsibilities
+## Public API Surface & Extension Points
 
-| Module                    | Responsibility                                                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`                | Single root entry point, `loadProject` factory, and all cross-feature orchestration. The only place modules are composed together. |
-| `core/types.ts`           | All shared TypeScript types and schemas. Pure definitions, no executable code.                                                     |
-| `core/errors.ts`          | Error codes and error classes. Single source of truth for every error the library can produce.                                     |
-| `core/utils/result.ts`    | `createSuccess(data)` and `createFailure(code, message)`. Every module uses these to construct result objects consistently.        |
-| `structure/`              | Directory traversal, file discovery, ignore list application. No AST, no file I/O, no commands.                                    |
-| `languages/index.ts`      | Language mapper — maps file extensions to the correct parser. Validates that a parser is installed before use.                     |
-| `languages/typescript.ts` | TypeScript parser — wraps `ts-morph`, delegates to normalizer, returns `ASTResult`.                                                |
-| `languages/javascript.ts` | JavaScript parser — wraps `ts-morph`, delegates to normalizer, returns `ASTResult`.                                                |
-| `ast/`                    | `parseAST` orchestration — delegates to `languages/` to pick the right parser. No file I/O, no commands.                           |
-| `ast/normalizer.ts`       | Maps parser nodes to the normalized `ASTResult` JSON schema.                                                                       |
-| `files/`                  | `readFile`, `writeFile`, `createFile` with absolute path resolution and root boundary enforcement.                                 |
-| `commands/`               | `execa` invocation, timeout handling, result packaging. No AST, no file I/O, no structure.                                         |
+### Public surface
 
----
+The public API is everything exported from the package root. Values: `loadProject`, `ProjexorError`, `ErrorCode`. Types: all option types, result types, AST model types, and context types. Everything a caller might need to name explicitly is exported.
 
-## API Reference
+See [`docs/api.md`](docs/api.md) for the full API reference.
 
-### `loadProject({ path, ignore? })`
+### Adding a new language
 
-Sets the project root and returns a context object with all functions bound to it. Every path passed to any function is resolved relative to this root and blocked from escaping above it.
+Adding a language is the primary extension point. The steps are:
 
-| Parameter | Type       | Required                                              |
-| --------- | ---------- | ----------------------------------------------------- |
-| `path`    | `string`   | yes — absolute path to project root                   |
-| `ignore`  | `string[]` | no — glob patterns applied globally to all operations |
+1. Add the new language key to [`LanguageKey`](docs/languages.md#language-keys) in `core/types.ts`
+2. Add the new result type extending [`BaseASTResult`](docs/models.md#astresult) in `core/types.ts`
+3. Add it to the [`ASTResult`](docs/models.md#astresult) union
+4. Register the extensions and parser in `LANGUAGE_REGISTRY` in `languages/index.ts`
+5. Add the language key to [`parserOptions`] in `LoadProjectOptions`
+6. Write the parser in `ast/languages/`
+7. Add fixture files in `tests/fixtures/` covering all node types for the new language
+8. Add parser tests
 
-```ts
-import { loadProject } from 'projexor';
+The caller-facing API does not change. Existing language keys and result types are never modified.
 
-const project = loadProject({
-  path: '/my/project',
-  ignore: ['node_modules', 'dist', '**/*.test.ts'],
-});
+### Adding a new operation
+
+A new operation follows the same pattern as all existing ones:
+
+- Implement in its own feature module under `src/`
+- Import and expose it only through `index.ts`
+- Follow the validation order — boundary check, existence check, type check, then work
+- Throw `ProjexorError` for all failures — no new error classes, no new result wrappers
+- Add the operation to `ProjectContext` in `core/types.ts`
+- Export any new option and result types from the package root
+
+### What is out of scope
+
+These are features explicitly decided against. Do not build them unless a deliberate decision is made to include them:
+
+- Standalone functions without `loadProject`
+- Cross-file type resolution or type inference
+- AST-based code rewriting
+- Watch mode or incremental re-parsing
+- Built-in AST result caching
+
+### Tech stack
+
+| Layer             | Choice                               | Reason                                                                                                 |
+| ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Language          | TypeScript                           | Type safety for both internals and the public API                                                      |
+| AST parsing       | TypeScript Compiler API              | No native bindings, handles TS and JS, `noResolve` keeps parsing fast and self-contained               |
+| Input validation  | Zod                                  | Declarative schemas, precise error messages, handles conditional parameter requirements cleanly        |
+| Build             | tsup                                 | Dual ESM/CJS output, minimal config                                                                    |
+| Testing           | Vitest                               | ESM-native, fast, seamless with TypeScript and tsup                                                    |
+| Command execution | execa                                | `shell: false` by default, promise-based, built-in timeout, interleaved stdout+stderr via `all` stream |
+| Ignore patterns   | micromatch                           | Glob matching against relative paths                                                                   |
+| Linting           | ESLint + `@typescript-eslint/strict` | Strict type-aware linting                                                                              |
+| Formatting        | Prettier                             | Zero-debate formatting                                                                                 |
+| Git hooks         | Husky + lint-staged                  | Blocks bad commits, runs checks on staged files only                                                   |
+| Versioning        | Changesets                           | Automated versioning, changelog generation, npm publishing                                             |
+| CI                | GitHub Actions                       | Release pipeline                                                                                       |
+
+### Versioning policy
+
+| Bump    | When                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------ |
+| `major` | Breaking API change — removed or renamed export, changed return shape, `ASTResult` schema change |
+| `minor` | New operation, new parameter on existing operation, new language support                         |
+| `patch` | Bug fix, performance improvement, internal refactor, documentation update                        |
+
+Every change that ships must have a changeset file.
+
+### Release pipeline
+
 ```
-
-**Returns:** `ProjectContext` — object with all functions bound to the root.
-
----
-
-### `project.getStructure({ path })`
-
-Walks the directory at `path` and returns a JSON file tree. All files not matching the global ignore list are included regardless of extension. When `ast: true`, also parses supported files and returns a flat AST map alongside the tree — orchestrated in `index.ts`, `structure/` and `ast/` never call each other.
-
-| Parameter | Type      | Required                 |
-| --------- | --------- | ------------------------ |
-| `path`    | `string`  | yes                      |
-| `ast`     | `boolean` | no — defaults to `false` |
-
-```ts
-// structure only
-const result = await project.getStructure({ path: '/src' });
-
-if (result.success) {
-  result.data.structure; // ProjectStructure
-}
-
-// structure + AST
-const result = await project.getStructure({ path: '/src', ast: true });
-
-if (result.success) {
-  result.data.structure; // ProjectStructure
-  result.data.ast; // Record<string, ASTResult>
-}
+Developer writes changeset
+→ PR merged to main
+→ GitHub Actions detects pending changesets
+→ Workflow dispatcher triggered manually
+→ Changesets bumps version in package.json
+→ CHANGELOG.md updated automatically
+→ Package published to npm
 ```
-
-**Returns:**
-
-```ts
-// ast: false
-SuccessResult<{ structure: ProjectStructure }>;
-
-// ast: true
-SuccessResult<{ structure: ProjectStructure; ast: Record<string, ASTResult> }>;
-```
-
----
-
-### `project.parseAST({ path, ignore? })`
-
-Parses a single file, a folder (always recursive), or the whole project. Language detected from extension. Unsupported extensions return `{ supported: false }`. Supported extensions with no installed parser throw `PARSER_NOT_INSTALLED` immediately. Local `ignore` extends — never replaces — the global ignore set by `loadProject`.
-
-| Parameter | Type       | Required                                      |
-| --------- | ---------- | --------------------------------------------- |
-| `path`    | `string`   | yes                                           |
-| `ignore`  | `string[]` | no — extends global ignore for this call only |
-
-```ts
-const result = await project.parseAST({
-  path: '/src/features/auth',
-  ignore: ['__tests__', '**/*.spec.ts'],
-});
-
-if (result.success) {
-  result.data; // Record<string, ASTResult> — filePath → ASTResult
-}
-```
-
-**Returns:** `SuccessResult<Record<string, ASTResult>>`
-
----
-
-### `project.readFile({ path, nodeName? })`
-
-Reads a file and returns its raw text content. If `nodeName` is provided, returns only that named node (function or class) along with its start and end line numbers.
-
-| Parameter  | Type     | Required                                    |
-| ---------- | -------- | ------------------------------------------- |
-| `path`     | `string` | yes                                         |
-| `nodeName` | `string` | no — name of a function or class to extract |
-
-```ts
-// read whole file
-const result = await project.readFile({ path: '/src/index.ts' });
-
-if (result.success) {
-  result.data; // string
-}
-
-// read a named node
-const result = await project.readFile({
-  path: '/src/index.ts',
-  nodeName: 'parseUser',
-});
-
-if (result.success) {
-  result.data.content; // string
-  result.data.startLine; // number
-  result.data.endLine; // number
-}
-```
-
-**Returns:**
-
-```ts
-// without nodeName
-SuccessResult<string>;
-
-// with nodeName
-SuccessResult<{ content: string; startLine: number; endLine: number }>;
-```
-
----
-
-### `project.writeFile({ path, content?, operation, lines? })`
-
-Writes to an existing file. Behavior controlled by `operation` and `lines`.
-
-| Parameter   | Type                                  | Required                                                    |
-| ----------- | ------------------------------------- | ----------------------------------------------------------- |
-| `path`      | `string`                              | yes                                                         |
-| `content`   | `string`                              | yes for `insert` and `overwrite`, not required for `delete` |
-| `operation` | `'insert' \| 'overwrite' \| 'delete'` | yes                                                         |
-| `lines`     | `{ start: number, end?: number }`     | no — omitting means full file                               |
-
-| operation   | lines            | behavior                                |
-| ----------- | ---------------- | --------------------------------------- |
-| `overwrite` | omitted          | replace entire file content             |
-| `overwrite` | `{ start }`      | overwrite from that line to end of file |
-| `overwrite` | `{ start, end }` | overwrite between start and end lines   |
-| `insert`    | `{ start }`      | insert content at that line             |
-| `delete`    | `{ start }`      | delete that single line                 |
-| `delete`    | `{ start, end }` | delete between start and end lines      |
-
-```ts
-// overwrite whole file
-await project.writeFile({
-  path: '/src/index.ts',
-  content: 'export const x = 1',
-  operation: 'overwrite',
-});
-
-// insert at line 10
-await project.writeFile({
-  path: '/src/index.ts',
-  content: '// inserted line',
-  operation: 'insert',
-  lines: { start: 10 },
-});
-
-// delete lines 10–25
-await project.writeFile({
-  path: '/src/index.ts',
-  operation: 'delete',
-  lines: { start: 10, end: 25 },
-});
-
-if (result.success) {
-  result.data.path; // string
-  result.data.startLine; // number
-  result.data.endLine; // number
-}
-```
-
-**Returns:** `SuccessResult<{ path: string, startLine: number, endLine: number }>`
-
----
-
-### `project.createFile({ path, content })`
-
-Creates a new file with the given content. Creates any missing parent directories recursively. Returns `FILE_ALREADY_EXISTS` if the file already exists.
-
-| Parameter | Type     | Required |
-| --------- | -------- | -------- |
-| `path`    | `string` | yes      |
-| `content` | `string` | yes      |
-
-```ts
-const result = await project.createFile({
-  path: '/src/utils/new.ts',
-  content: 'export {}',
-});
-
-if (result.success) {
-  result.data.path; // string
-  result.data.lines; // number
-}
-```
-
-**Returns:** `SuccessResult<{ path: string, lines: number }>`
-
----
-
-### `project.runCommand({ command, args, cwd?, timeout? })`
-
-Executes a command via `execa` with `shell: false`. `cwd` defaults to the project root. Timeout is optional — if exceeded, kills the process and returns `COMMAND_TIMEOUT`.
-
-| Parameter | Type       | Required                      |
-| --------- | ---------- | ----------------------------- |
-| `command` | `string`   | yes                           |
-| `args`    | `string[]` | yes                           |
-| `cwd`     | `string`   | no — defaults to project root |
-| `timeout` | `number`   | no — milliseconds             |
-
-```ts
-const result = await project.runCommand({
-  command: 'npm',
-  args: ['run', 'build'],
-  timeout: 30000,
-});
-
-if (result.success) {
-  result.data.stdout; // string
-  result.data.stderr; // string
-  result.data.exitCode; // number
-}
-```
-
-**Returns:** `SuccessResult<{ stdout: string, stderr: string, exitCode: number }>`
-
----
-
-## Data Model
-
-All data is in-memory JSON. No database, no persistent storage. The library is stateless between calls.
-
-### Result wrapper
-
-```ts
-SuccessResult<T> { success: true,  data: T }
-FailureResult    { success: false, error: { code: ErrorCode, message: string } }
-```
-
-### `ProjectStructure`
-
-```ts
-{ root: string, tree: FileNode[] }
-```
-
-### `FileNode`
-
-```ts
-{
-  name:     string
-  path:     string              // absolute
-  type:     'file' | 'directory'
-  lines:    number | null       // null for directories
-  children: FileNode[]
-}
-```
-
-### `ASTResult`
-
-```ts
-{
-  filePath:  string
-  lines:     number
-  supported: boolean            // false if extension has no registered parser
-  imports:   Import[]
-  exports:   Export[]
-  functions: Function[]
-  classes:   Class[]
-}
-```
-
-### Supporting types
-
-```ts
-Import    { name: string, source: string, line: number }
-Export    { name: string, type: 'function' | 'class' | 'variable' | 'default', line: number }
-Function  { name: string, parameters: Parameter[], returnType: string, jsDoc: string | null, startLine: number, endLine: number }
-Parameter { name: string, type: string }
-Class     { name: string, methods: Function[], properties: Property[], jsDoc: string | null, startLine: number, endLine: number }
-Property  { name: string, type: string }
-```
-
----
-
-## Error Handling
-
-**Programmer errors → throw** via Zod validation before any operation begins.
-
-**Runtime failures → FailureResult** — the library never decides what to do with failures.
-
-### All error codes
-
-| Code                   | When                                                      |
-| ---------------------- | --------------------------------------------------------- |
-| `FILE_NOT_FOUND`       | Path does not exist                                       |
-| `FILE_ALREADY_EXISTS`  | `createFile` called on an existing path                   |
-| `NODE_NOT_FOUND`       | `nodeName` passed to `readFile` but not found in the file |
-| `PARSE_FAILED`         | Parser could not parse the file                           |
-| `PARSER_NOT_INSTALLED` | Supported extension but peer dependency not installed     |
-| `UNSUPPORTED_LANGUAGE` | Extension has no registered parser                        |
-| `COMMAND_FAILED`       | Process exited with non-zero code                         |
-| `COMMAND_TIMEOUT`      | Process exceeded optional timeout                         |
-| `PERMISSION_DENIED`    | File system permission error                              |
-| `INVALID_OPERATION`    | Invalid line range or malformed operation parameters      |
-| `PATH_OUTSIDE_ROOT`    | Path attempts to escape the root set by `loadProject`     |
-
----
-
-## Input Validation
-
-All function inputs are validated with Zod schemas before any operation begins. Validation errors throw immediately — they are programmer errors, not runtime failures.
-
-Each function has its own Zod schema. Conditional requirements (e.g. `content` not required for `delete`, `end` optional on `lines`) are expressed in the schema — not scattered across function bodies.
-
----
-
-## Versioning Policy
-
-Projexor uses [Changesets](https://github.com/changesets/changesets) for versioning and changelog generation.
-
-| Bump    | When                                                                                              |
-| ------- | ------------------------------------------------------------------------------------------------- |
-| `major` | Breaking API change, `ASTResult` schema change, removed or renamed function, changed return shape |
-| `minor` | New function, new parameter on existing function, new language support added                      |
-| `patch` | Bug fix, performance improvement, internal refactor, documentation update                         |
-
-Every change that ships must have a changeset file. No exceptions.
