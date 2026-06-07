@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { getStructure } from '../getStructure';
+import { createStructureReader } from '../getStructure';
 import type { FsAdapter, FsReadDirReturn } from '../../adapters/adapters';
 import type {
   FailureResult,
@@ -51,7 +51,8 @@ describe('getStructure', () => {
         ],
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project');
       expect(result.success).toBe(true);
       data = (result as SuccessResult<ProjectStructure>).data;
     });
@@ -74,6 +75,7 @@ describe('getStructure', () => {
         children: [],
       });
     });
+
     it('directory node has correct shape', () => {
       const src = data.tree.find((n) => n.name === 'src');
 
@@ -120,10 +122,10 @@ describe('getStructure', () => {
     });
 
     it('ignores names in the list', async () => {
-      const result = await getStructure(
-        { path: '/project', ignore: ['dist', 'src'] },
-        fsAdapter,
-      );
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project', {
+        ignore: ['dist', 'src'],
+      });
 
       expect(result.success).toBe(true);
       const data = (result as SuccessResult<ProjectStructure>).data;
@@ -138,10 +140,10 @@ describe('getStructure', () => {
     });
 
     it('ignores paths in the list', async () => {
-      const result = await getStructure(
-        { path: '/project', ignore: ['/project/dist', '/project/src'] },
-        fsAdapter,
-      );
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project', {
+        ignore: ['/project/dist', '/project/src'],
+      });
 
       expect(result.success).toBe(true);
       const data = (result as SuccessResult<ProjectStructure>).data;
@@ -172,7 +174,8 @@ describe('getStructure', () => {
         },
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project');
 
       expect(result.success).toBe(true);
       const data = (result as SuccessResult<ProjectStructure>).data;
@@ -188,7 +191,8 @@ describe('getStructure', () => {
   describe('failure cases', () => {
     it('return FailureResult if path does not exist', async () => {
       const fsAdapter = makeMockFsAdapter({});
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project');
 
       expect(result.success).toBe(false);
       expect((result as FailureResult).error.code).toBe(
@@ -203,7 +207,8 @@ describe('getStructure', () => {
         },
       });
 
-      const result = await getStructure({ path: '/project' }, adapter);
+      const { getStructure } = createStructureReader(adapter);
+      const result = await getStructure('/project');
 
       expect(result.success).toBe(false);
       expect((result as FailureResult).error.code).toBe(
@@ -218,7 +223,8 @@ describe('getStructure', () => {
         },
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
+      const result = await getStructure('/project');
 
       expect(result.success).toBe(false);
       expect((result as FailureResult).error.code).toBe(
@@ -233,9 +239,9 @@ describe('getStructure', () => {
         },
       });
 
-      await expect(
-        getStructure({ path: '/project' }, fsAdapter),
-      ).rejects.toThrow();
+      const { getStructure } = createStructureReader(fsAdapter);
+
+      await expect(getStructure('/project')).rejects.toThrow();
     });
   });
 });
