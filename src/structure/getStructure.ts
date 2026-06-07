@@ -46,7 +46,7 @@ export const getStructure = async (
         continue;
 
       if (child.type === 'file') {
-        tree.push({ ...child, lines: null, children: [] });
+        tree.push({ ...child, children: [] });
         continue;
       }
 
@@ -55,7 +55,6 @@ export const getStructure = async (
 
       tree.push({
         ...child,
-        lines: null,
         children: nestedTree,
       });
     }

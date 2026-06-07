@@ -71,11 +71,9 @@ describe('getStructure', () => {
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
-
     it('directory node has correct shape', () => {
       const src = data.tree.find((n) => n.name === 'src');
 
@@ -83,7 +81,6 @@ describe('getStructure', () => {
         name: 'src',
         path: '/project/src',
         type: 'directory',
-        lines: null,
       });
     });
 
@@ -101,7 +98,6 @@ describe('getStructure', () => {
         name: 'types.ts',
         path: '/project/src/core/types.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
@@ -137,7 +133,6 @@ describe('getStructure', () => {
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
@@ -156,7 +151,6 @@ describe('getStructure', () => {
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });

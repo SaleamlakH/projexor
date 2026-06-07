@@ -7,7 +7,6 @@ export interface FileNode {
   name: string;
   path: string;
   type: 'file' | 'directory';
-  lines: number | null;
   children: FileNode[];
 }
 
