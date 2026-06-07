@@ -1,5 +1,6 @@
 export interface ProjectStructure {
-  root: string;
+  basePath: string;
+  targetPath: string;
   tree: FileNode[];
 }
 

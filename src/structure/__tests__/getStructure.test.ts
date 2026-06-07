@@ -57,8 +57,8 @@ describe('getStructure', () => {
       data = (result as SuccessResult<ProjectStructure>).data;
     });
 
-    it('sets root correctly', () => {
-      expect(data.root).toBe('/project');
+    it('sets basePath correctly', () => {
+      expect(data.basePath).toBe('/project');
     });
 
     it('returns correct number of top-level children', () => {

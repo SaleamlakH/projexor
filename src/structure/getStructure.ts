@@ -23,6 +23,7 @@ export type GetStructure = (
  */
 export const createStructureReader = (
   fsAdapter: FsAdapter,
+  basePath?: string,
 ): { getStructure: GetStructure } => {
   const getStructure: GetStructure = async (path: string, options) => {
     const ignore = options?.ignore;
@@ -69,7 +70,11 @@ export const createStructureReader = (
 
     try {
       const dirTree = await walkDir(path);
-      return createSuccess({ root: path, tree: dirTree });
+      return createSuccess({
+        basePath: basePath || path,
+        targetPath: path,
+        tree: dirTree,
+      });
     } catch (error) {
       if (error instanceof ProjexorError) {
         return createFailure(error.code, error.message);
