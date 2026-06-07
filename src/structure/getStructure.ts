@@ -1,12 +1,5 @@
-import type { FsAdapter, FsReadDirReturn } from '../adapters/adapters';
-import type {
-  FailureResult,
-  FileNode,
-  ProjectStructure,
-  SuccessResult,
-} from '../core/types';
-import { createFailure, createSuccess } from '../utils/result';
-import { PermissionDeniedError, ProjexorError } from '../core/errors';
+import type { FsAdapter } from '../adapters/adapters';
+import type { FileNode, ProjectStructure } from '../core/types';
 import path, { join } from 'path';
 
 export type GetStructureOptions = {
@@ -16,7 +9,7 @@ export type GetStructureOptions = {
 export type GetStructure = (
   path: string,
   options?: GetStructureOptions,
-) => Promise<SuccessResult<ProjectStructure> | FailureResult>;
+) => Promise<ProjectStructure>;
 
 /**
  * Walks the directory at `path` and returns a JSON file tree.
@@ -36,19 +29,7 @@ export const createStructureReader = (
     const ignore = options?.ignore;
 
     const walkDir = async (currentPath: string): Promise<FileNode[]> => {
-      const dirChildren: FsReadDirReturn[] = [];
-
-      try {
-        const readResult = await fsAdapter.readDir(currentPath);
-        dirChildren.push(...readResult);
-      } catch (error) {
-        if (error instanceof PermissionDeniedError) {
-          if (path === currentPath) throw error;
-          return [];
-        }
-
-        throw error;
-      }
+      const dirChildren = await fsAdapter.readDir(currentPath);
 
       const tree: FileNode[] = [];
       for (const child of dirChildren) {
@@ -66,33 +47,27 @@ export const createStructureReader = (
           continue;
         }
 
-        // walk directory
-        const nestedTree = await walkDir(child.path);
+        // walk director,
+        // catch any error and set the children empty
+        let nestedTree: FileNode[] = [];
+        try {
+          nestedTree = await walkDir(child.path);
+        } catch {
+          nestedTree = [];
+        }
 
-        tree.push({
-          ...child,
-          path: childPath,
-          children: nestedTree,
-        });
+        tree.push({ ...child, path: childPath, children: nestedTree });
       }
 
       return tree;
     };
 
-    try {
-      const dirTree = await walkDir(fullPath);
-      return createSuccess({
-        basePath: basePath || path,
-        targetPath: path,
-        tree: dirTree,
-      });
-    } catch (error) {
-      if (error instanceof ProjexorError) {
-        return createFailure(error.code, error.message);
-      }
-
-      throw error;
-    }
+    const dirTree = await walkDir(fullPath);
+    return {
+      basePath: basePath || path,
+      targetPath: path,
+      tree: dirTree,
+    };
   };
 
   return { getStructure };
