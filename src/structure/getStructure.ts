@@ -7,6 +7,7 @@ import type {
 } from '../core/types';
 import { createFailure, createSuccess } from '../utils/result';
 import { PermissionDeniedError, ProjexorError } from '../core/errors';
+import path, { join } from 'path';
 
 export type GetStructureOptions = {
   ignore?: string[];
@@ -25,7 +26,13 @@ export const createStructureReader = (
   fsAdapter: FsAdapter,
   basePath?: string,
 ): { getStructure: GetStructure } => {
+  const removeBasePath = (basePath: string, fullPath: string) => {
+    const relative = path.relative(basePath, fullPath);
+    return path.normalize(relative);
+  };
+
   const getStructure: GetStructure = async (path: string, options) => {
+    const fullPath = basePath ? join(basePath, path) : path;
     const ignore = options?.ignore;
 
     const walkDir = async (currentPath: string): Promise<FileNode[]> => {
@@ -43,16 +50,19 @@ export const createStructureReader = (
         throw error;
       }
 
-      if (!dirChildren.length) return [];
-
       const tree: FileNode[] = [];
       for (const child of dirChildren) {
         // ignore
         if (ignore?.includes(child.name) || ignore?.includes(child.path))
           continue;
 
+        // remove base path
+        const childPath = basePath
+          ? removeBasePath(basePath, child.path)
+          : child.path;
+
         if (child.type === 'file') {
-          tree.push({ ...child, children: [] });
+          tree.push({ ...child, path: childPath, children: [] });
           continue;
         }
 
@@ -61,6 +71,7 @@ export const createStructureReader = (
 
         tree.push({
           ...child,
+          path: childPath,
           children: nestedTree,
         });
       }
@@ -69,7 +80,7 @@ export const createStructureReader = (
     };
 
     try {
-      const dirTree = await walkDir(path);
+      const dirTree = await walkDir(fullPath);
       return createSuccess({
         basePath: basePath || path,
         targetPath: path,

@@ -105,6 +105,61 @@ describe('getStructure', () => {
     });
   });
 
+  describe('relative target path', () => {
+    let fsAdapter: FsAdapter;
+
+    beforeAll(async () => {
+      fsAdapter = makeMockFsAdapter({
+        '/project': [
+          { name: 'src', path: '/project/src', type: 'directory' },
+          { name: 'config.ts', path: '/project/config.ts', type: 'file' },
+        ],
+
+        '/project/src': [
+          { name: 'index.ts', path: '/project/src/index.ts', type: 'file' },
+          { name: 'core', path: '/project/src/core', type: 'directory' },
+        ],
+
+        '/project/src/core': [
+          {
+            name: 'types.ts',
+            path: '/project/src/core/types.ts',
+            type: 'file',
+          },
+        ],
+      });
+    });
+
+    it('returns tree of relative target path', async () => {
+      const { getStructure } = createStructureReader(fsAdapter, '/project');
+      const result = await getStructure('src');
+
+      expect(result.success).toBe(true);
+      const data = (result as SuccessResult<ProjectStructure>).data;
+
+      expect(data).toMatchObject({
+        basePath: '/project',
+        targetPath: 'src',
+      });
+
+      expect(data.tree.length).toBe(2);
+    });
+
+    it('nested children path start with normalized targetPath', async () => {
+      const { getStructure } = createStructureReader(fsAdapter, '/project');
+      const result = await getStructure('./src');
+      expect(result.success).toBe(true);
+      const data = (result as SuccessResult<ProjectStructure>).data;
+
+      data.tree.forEach((child) => {
+        expect(child.path.startsWith('src')).toBe(true);
+        child.children.forEach(({ path }) => {
+          expect(path.startsWith('src')).toBe(true);
+        });
+      });
+    });
+  });
+
   describe('ignore', () => {
     let fsAdapter: FsAdapter;
 
