@@ -1,10 +1,6 @@
 import fs from 'fs/promises';
 import type { FsAdapter, FsReadDirReturn } from './adapters';
-import {
-  FileNotFoundError,
-  NotDirectoryError,
-  PermissionDeniedError,
-} from '../core/errors';
+import { ErrorCode, ProjexorError } from '../core/errors';
 
 export const fsAdapter: FsAdapter = {
   readDir: async (path: string): Promise<FsReadDirReturn[]> => {
@@ -22,14 +18,23 @@ export const fsAdapter: FsAdapter = {
 
       switch (nodeError.code) {
         case 'ENOENT':
-          throw new FileNotFoundError(path);
+          throw new ProjexorError(
+            ErrorCode.DIRECTORY_NOT_FOUND,
+            `directory not found: ${path}`,
+          );
 
         case 'ENOTDIR':
-          throw new NotDirectoryError(path);
+          throw new ProjexorError(
+            ErrorCode.NOT_A_DIRECTORY,
+            `not a directory: ${path}`,
+          );
 
         case 'EACCES':
         case 'EPERM':
-          throw new PermissionDeniedError(path);
+          throw new ProjexorError(
+            ErrorCode.PERMISSION_DENIED,
+            `permission denied: ${path}`,
+          );
 
         default:
           throw error;
