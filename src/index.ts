@@ -1,4 +1,7 @@
-import { getStructure as getDirStructure } from './structure/getStructure';
+import {
+  createStructureReader,
+  type GetStructure,
+} from './structure/getStructure';
 import { fsAdapter } from './adapters/nodeFs.adapter';
 import { join } from 'path';
 import { parseAst as parser } from './ast/parseAst';
@@ -26,7 +29,7 @@ interface LoadProjectReturnObject {
    * ```
    */
 
-  getStructure: typeof getDirStructure;
+  getStructure: GetStructure;
 
   /**
    * parse ast of a list of file paths, which are `relative` to the project root
@@ -47,28 +50,26 @@ export const loadProject = ({
   projectRoot,
   defaultIgnore,
 }: LoadProjectArgs): LoadProjectReturnObject => {
-  const getStructure: typeof getDirStructure = async ({ path, ignore }) => {
+  const getStructure: GetStructure = async (path, options) => {
     const mergedIgnore: string[] = [];
 
     if (defaultIgnore) {
       mergedIgnore.push(...defaultIgnore);
     }
 
-    if (ignore) {
-      mergedIgnore.push(...ignore);
+    if (options?.ignore) {
+      mergedIgnore.push(...options.ignore);
     }
 
     const normalizedIgnore = mergedIgnore.map((entry) =>
       entry.startsWith('/') ? join(projectRoot, entry) : entry,
     );
 
-    return getDirStructure(
-      {
-        path: join(projectRoot, path),
-        ...(normalizedIgnore.length && { ignore: normalizedIgnore }),
-      },
-      fsAdapter,
-    );
+    const { getStructure: structureReader } = createStructureReader(fsAdapter);
+
+    return structureReader(join(projectRoot, path), {
+      ...(normalizedIgnore.length && { ignore: normalizedIgnore }),
+    });
   };
 
   const parseAst: typeof parser = (files, options) => {

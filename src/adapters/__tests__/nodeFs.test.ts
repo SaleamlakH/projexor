@@ -2,11 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, afterAll } from 'vitest';
 import { fsAdapter } from '../nodeFs.adapter';
-import {
-  FileNotFoundError,
-  NotDirectoryError,
-  PermissionDeniedError,
-} from '../../core/errors';
+import { ErrorCode, ProjexorError } from '../../core/errors';
 
 // create temp file dir
 const tempDir = fs.mkdtempDisposableSync('_fs_adapter_');
@@ -73,26 +69,38 @@ describe('fsAdapter', () => {
       });
     });
 
-    it('throw FileNotFound if path not exists', async () => {
-      await expect(
-        fsAdapter.readDir(path.join(tempDir.path, 'not-exist-in-temp')),
-      ).rejects.toThrow(FileNotFoundError);
+    it('throw DIRECTORY_NOT_FOUND if directory not exists', async () => {
+      await fsAdapter
+        .readDir(path.join(tempDir.path, 'not-exist-in-temp'))
+        .then(() => expect.fail('Should have thrown'))
+        .catch((error) => {
+          expect(error.constructor).toBe(ProjexorError);
+          expect(error.code).toBe(ErrorCode.DIRECTORY_NOT_FOUND);
+        });
     });
 
-    it('throw NotDirectory if path not directory', async () => {
-      await expect(
-        fsAdapter.readDir(path.join(tempDir.path, 'src/index.ts')),
-      ).rejects.toThrow(NotDirectoryError);
+    it('throw NOT_A_DIRECTORY if path not directory', async () => {
+      await fsAdapter
+        .readDir(path.join(tempDir.path, 'src/index.ts'))
+        .then(() => expect.fail('Should have thrown'))
+        .catch((error) => {
+          expect(error.constructor).toBe(ProjexorError);
+          expect(error.code).toBe(ErrorCode.NOT_A_DIRECTORY);
+        });
     });
 
-    it('throw PermissionDenied if directory is protected', async () => {
+    it('throw PERMISSION_DENIED if directory is protected', async () => {
       // create restricted subdirectory
       fs.mkdirSync(path.join(tempDir.path, 'protected'));
       fs.chmodSync(path.join(tempDir.path, 'protected'), 0o000);
 
-      await expect(
-        fsAdapter.readDir(path.join(tempDir.path, 'protected')),
-      ).rejects.toThrow(PermissionDeniedError);
+      await fsAdapter
+        .readDir(path.join(tempDir.path, 'protected'))
+        .then(() => expect.fail('Should have thrown'))
+        .catch((error) => {
+          expect(error.constructor).toBe(ProjexorError);
+          expect(error.code).toBe(ErrorCode.PERMISSION_DENIED);
+        });
 
       // remove protection
       fs.chmodSync(path.join(tempDir.path, 'protected'), 0o777);

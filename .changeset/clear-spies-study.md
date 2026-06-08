@@ -2,5 +2,8 @@
 '@aimro/projexor': minor
 ---
 
-- Add `getStructure` with directory traversal, ignore support, and an `fsAdapter` with mapped errors, Exposed via `loadProject` factory.
-- Fix: Append slash-prefixed ignore entries to the `projectRoot`
+Add `getStructure` for directory traversal
+
+- Traverse a target path and return a `ProjectStructure` representation.
+- Propagates `ProjexorError` with defined `ErrorCodes` when failures occur.
+- All child paths are normalized to start from `targetPath`, ensuring consistent and predictable output.

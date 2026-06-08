@@ -2,10 +2,8 @@
 '@aimro/projexor': minor
 ---
 
-Add core types, error classes, and result utilities
+Add core types, error model, and result utilities
 
-**Refactor**
-
-- expand error codes
-- set name to `ProjexorError`, and
-- add optional cause for wrap underlying errors.
+- Introduce the `ProjectStructure` model with `basePath` and `targetPath`, clearly separating the project root from the queried location.
+- Add a unified error system using `ErrorCodes` and a single `ProjexorError`, providing consistent and predictable error handling.
+- Provide result utilities to standardize how operations return data and errors.

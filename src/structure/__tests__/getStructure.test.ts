@@ -1,17 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { getStructure } from '../getStructure';
+import { createStructureReader } from '../getStructure';
 import type { FsAdapter, FsReadDirReturn } from '../../adapters/adapters';
-import type {
-  FailureResult,
-  ProjectStructure,
-  SuccessResult,
-} from '../../core/types';
-import {
-  ErrorCode,
-  FileNotFoundError,
-  NotDirectoryError,
-  PermissionDeniedError,
-} from '../../core/errors';
+import type { ProjectStructure } from '../../core/types';
+import { ErrorCode, ProjexorError } from '../../core/errors';
 
 // fsAdapter.readDir(path), called multiple types.
 const makeMockFsAdapter = (
@@ -19,7 +10,11 @@ const makeMockFsAdapter = (
 ): FsAdapter => ({
   readDir: async (path: string) => {
     const entry = dirMap[path];
-    if (entry === undefined) throw new FileNotFoundError(path);
+    if (entry === undefined)
+      throw new ProjexorError(
+        ErrorCode.DIRECTORY_NOT_FOUND,
+        'directory not found',
+      );
     if (typeof entry === 'function') entry();
 
     return entry as FsReadDirReturn[];
@@ -28,7 +23,7 @@ const makeMockFsAdapter = (
 
 describe('getStructure', () => {
   describe('happy path - deep nested structure', () => {
-    let data: ProjectStructure;
+    let structure: ProjectStructure;
 
     beforeAll(async () => {
       const fsAdapter = makeMockFsAdapter({
@@ -51,49 +46,46 @@ describe('getStructure', () => {
         ],
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
-      expect(result.success).toBe(true);
-      data = (result as SuccessResult<ProjectStructure>).data;
+      const { getStructure } = createStructureReader(fsAdapter);
+      structure = await getStructure('/project');
     });
 
-    it('sets root correctly', () => {
-      expect(data.root).toBe('/project');
+    it('sets basePath correctly', () => {
+      expect(structure.basePath).toBe('/project');
     });
 
     it('returns correct number of top-level children', () => {
-      expect(data.tree).toHaveLength(2);
+      expect(structure.tree).toHaveLength(2);
     });
 
     it('file node has correct shape', () => {
-      const config = data.tree.find((n) => n.name === 'config.ts');
+      const config = structure.tree.find((n) => n.name === 'config.ts');
 
       expect(config).toMatchObject({
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
 
     it('directory node has correct shape', () => {
-      const src = data.tree.find((n) => n.name === 'src');
+      const src = structure.tree.find((n) => n.name === 'src');
 
       expect(src).toMatchObject({
         name: 'src',
         path: '/project/src',
         type: 'directory',
-        lines: null,
       });
     });
 
     it('resolve nested children correctly', () => {
-      const src = data.tree.find((n) => n.name === 'src');
+      const src = structure.tree.find((n) => n.name === 'src');
       expect(src?.children).toHaveLength(2);
     });
 
     it('resolve deep nested correctly', () => {
-      const src = data.tree.find((n) => n.name === 'src');
+      const src = structure.tree.find((n) => n.name === 'src');
       const core = src?.children.find((n) => n.name === 'core');
 
       expect(core?.children).toHaveLength(1);
@@ -101,8 +93,57 @@ describe('getStructure', () => {
         name: 'types.ts',
         path: '/project/src/core/types.ts',
         type: 'file',
-        lines: null,
         children: [],
+      });
+    });
+  });
+
+  describe('relative target path', () => {
+    let fsAdapter: FsAdapter;
+
+    beforeAll(async () => {
+      fsAdapter = makeMockFsAdapter({
+        '/project': [
+          { name: 'src', path: '/project/src', type: 'directory' },
+          { name: 'config.ts', path: '/project/config.ts', type: 'file' },
+        ],
+
+        '/project/src': [
+          { name: 'index.ts', path: '/project/src/index.ts', type: 'file' },
+          { name: 'core', path: '/project/src/core', type: 'directory' },
+        ],
+
+        '/project/src/core': [
+          {
+            name: 'types.ts',
+            path: '/project/src/core/types.ts',
+            type: 'file',
+          },
+        ],
+      });
+    });
+
+    it('returns tree of relative target path', async () => {
+      const { getStructure } = createStructureReader(fsAdapter, '/project');
+      const structure = await getStructure('src');
+
+      expect(structure).toMatchObject({
+        basePath: '/project',
+        targetPath: 'src',
+      });
+
+      expect(structure.tree.length).toBe(2);
+    });
+
+    it('nested children path start with normalized targetPath', async () => {
+      const { getStructure } = createStructureReader(fsAdapter, '/project');
+      const structure = await getStructure('./src');
+
+      structure.tree.forEach((child) => {
+        expect(child.path.startsWith('src')).toBe(true);
+        child.children.forEach(({ path }) => {
+          expect(path.startsWith('src')).toBe(true);
+        });
       });
     });
   });
@@ -124,39 +165,31 @@ describe('getStructure', () => {
     });
 
     it('ignores names in the list', async () => {
-      const result = await getStructure(
-        { path: '/project', ignore: ['dist', 'src'] },
-        fsAdapter,
-      );
+      const { getStructure } = createStructureReader(fsAdapter);
+      const structure = await getStructure('/project', {
+        ignore: ['dist', 'src'],
+      });
 
-      expect(result.success).toBe(true);
-      const data = (result as SuccessResult<ProjectStructure>).data;
-
-      expect(data.tree).toHaveLength(1);
-      expect(data.tree[0]).toMatchObject({
+      expect(structure.tree).toHaveLength(1);
+      expect(structure.tree[0]).toMatchObject({
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
 
     it('ignores paths in the list', async () => {
-      const result = await getStructure(
-        { path: '/project', ignore: ['/project/dist', '/project/src'] },
-        fsAdapter,
-      );
+      const { getStructure } = createStructureReader(fsAdapter);
+      const structure = await getStructure('/project', {
+        ignore: ['/project/dist', '/project/src'],
+      });
 
-      expect(result.success).toBe(true);
-      const data = (result as SuccessResult<ProjectStructure>).data;
-
-      expect(data.tree).toHaveLength(1);
-      expect(data.tree[0]).toMatchObject({
+      expect(structure.tree).toHaveLength(1);
+      expect(structure.tree[0]).toMatchObject({
         name: 'config.ts',
         path: '/project/config.ts',
         type: 'file',
-        lines: null,
         children: [],
       });
     });
@@ -174,74 +207,53 @@ describe('getStructure', () => {
         ],
 
         '/project/secret': () => {
-          throw new PermissionDeniedError('/project/secret');
+          throw new ProjexorError(
+            ErrorCode.PERMISSION_DENIED,
+            'permission denied',
+          );
         },
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
+      const structure = await getStructure('/project');
 
-      expect(result.success).toBe(true);
-      const data = (result as SuccessResult<ProjectStructure>).data;
-
-      const secret = data.tree.find((n) => n.name === 'secret');
+      const secret = structure.tree.find((n) => n.name === 'secret');
       expect(secret?.children).toEqual([]);
 
-      const src = data.tree.find((n) => n.name === 'src');
+      const src = structure.tree.find((n) => n.name === 'src');
       expect(src?.children).toHaveLength(1);
     });
   });
 
   describe('failure cases', () => {
-    it('return FailureResult if path does not exist', async () => {
-      const fsAdapter = makeMockFsAdapter({});
-      const result = await getStructure({ path: '/project' }, fsAdapter);
-
-      expect(result.success).toBe(false);
-      expect((result as FailureResult).error.code).toBe(
-        ErrorCode.FILE_NOT_FOUND,
-      );
-    });
-
-    it('return FailureResult if path is not directory', async () => {
-      const adapter = makeMockFsAdapter({
-        '/project': () => {
-          throw new NotDirectoryError('/project');
-        },
-      });
-
-      const result = await getStructure({ path: '/project' }, adapter);
-
-      expect(result.success).toBe(false);
-      expect((result as FailureResult).error.code).toBe(
-        ErrorCode.NOT_A_DIRECTORY,
-      );
-    });
-
-    it('return FailureResult if directory is protected', async () => {
+    it('bubble errors thrown by the root directory', async () => {
       const fsAdapter = makeMockFsAdapter({
         '/project': () => {
-          throw new PermissionDeniedError('/project');
+          throw new Error(
+            'Any file system error (Not Found, Not a Directory, etc)',
+          );
+        },
+      });
+      const { getStructure } = createStructureReader(fsAdapter);
+      await expect(getStructure('/project')).rejects.toThrow();
+    });
+
+    it('throw PERMISSION_DENIED if the target directory is protected', async () => {
+      const fsAdapter = makeMockFsAdapter({
+        '/project': () => {
+          throw new ProjexorError(
+            ErrorCode.PERMISSION_DENIED,
+            'permission denied',
+          );
         },
       });
 
-      const result = await getStructure({ path: '/project' }, fsAdapter);
+      const { getStructure } = createStructureReader(fsAdapter);
 
-      expect(result.success).toBe(false);
-      expect((result as FailureResult).error.code).toBe(
+      await expect(getStructure('/project')).rejects.toHaveProperty(
+        'code',
         ErrorCode.PERMISSION_DENIED,
       );
-    });
-
-    it('throw unknown internal error', async () => {
-      const fsAdapter = makeMockFsAdapter({
-        '/project': () => {
-          throw new Error();
-        },
-      });
-
-      await expect(
-        getStructure({ path: '/project' }, fsAdapter),
-      ).rejects.toThrow();
     });
   });
 });
