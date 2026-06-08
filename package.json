@@ -1,6 +1,6 @@
 {
   "name": "@aimro/projexor",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A foundation for building code-aware tools that exposes project structure, AST data, file operations, and command execution as clean, composeable functions any program can import and use.",
   "type": "module",
   "files": [
