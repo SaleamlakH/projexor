@@ -36,18 +36,26 @@ function walker(sourceFile: ts.SourceFile, commentPrefix: string) {
 
   sourceFile.forEachChild((node) => {
     if (ts.isImportDeclaration(node)) {
-      sketch += constructImportDec(node, sourceFile, commentPrefix);
+      sketch += constructImportDecl(node, sourceFile, commentPrefix);
     }
 
     if (ts.isImportEqualsDeclaration(node)) {
-      sketch += constructImportEqualDec(node, sourceFile, commentPrefix);
+      sketch += constructImportEqualDecl(node, sourceFile, commentPrefix);
+    }
+
+    if (ts.isExportAssignment(node)) {
+      sketch += constructExpAsmt(node, sourceFile, commentPrefix);
+    }
+
+    if (ts.isExportDeclaration(node)) {
+      sketch += constructExpDecl(node, sourceFile, commentPrefix);
     }
   });
 
   return sketch;
 }
 
-function constructImportDec(
+function constructImportDecl(
   node: ts.ImportDeclaration,
   sourceFile: ts.SourceFile,
   commentPrefix: string,
@@ -105,7 +113,7 @@ function constructImportDec(
   return writeImport();
 }
 
-function constructImportEqualDec(
+function constructImportEqualDecl(
   node: ts.ImportEqualsDeclaration,
   sourceFile: ts.SourceFile,
   commentPrefix: string,
@@ -121,4 +129,56 @@ function constructImportEqualDec(
     .trim();
 
   return `import ${modifiers ? modifiers.join(' ') : ''}${alias} = ${moduleRef}; ${commentPrefix} #line ${line}${EOL}`;
+}
+
+function constructExpAsmt(
+  node: ts.ExportAssignment,
+  sourceFile: ts.SourceFile,
+  commentPrefix: string,
+) {
+  const startLine = getLine(node.getStart(sourceFile), sourceFile);
+  return `${node.getText(sourceFile)} ${commentPrefix} #line ${startLine}${EOL}`;
+}
+
+function constructExpDecl(
+  node: ts.ExportDeclaration,
+  sourceFile: ts.SourceFile,
+  commentPrefix: string,
+) {
+  const startLine = getLine(node.getStart(sourceFile), sourceFile);
+  const endLine = getLine(node.getEnd(), sourceFile);
+  const source = node.moduleSpecifier?.getText(sourceFile);
+  const parts: string[] = [];
+
+  const writeExport = () => {
+    const typePrefix = node.isTypeOnly ? ' type' : '';
+    const fromSource = source ? `from ${source}` : '';
+    const headComment = `${commentPrefix} #lines ${startLine} - ${endLine}${EOL}`;
+    const inlineComment = `${commentPrefix} #line ${startLine}${EOL}`;
+
+    const combinedExport = parts.length
+      ? `export${typePrefix} ${parts.join(', ')} ${fromSource}`
+      : `export * ${fromSource}`;
+
+    return startLine !== endLine
+      ? `${headComment}${combinedExport.trim().replace(/\s+/g, ' ')};${EOL}`
+      : `${combinedExport.trim().replace(/\s+/g, ' ')}; ${inlineComment}`;
+  };
+
+  if (!node.exportClause) return writeExport();
+
+  if (ts.isNamespaceExport(node.exportClause)) {
+    parts.push(node.exportClause.getText(sourceFile));
+    return writeExport();
+  }
+
+  if (ts.isNamedExports(node.exportClause)) {
+    const specifiers = node.exportClause.elements.map((element) =>
+      element.getText(sourceFile).trim(),
+    );
+
+    parts.push(`{ ${specifiers.join(', ')} }`);
+  }
+
+  return writeExport();
 }

@@ -122,4 +122,123 @@ describe('minimize function', () => {
       );
     });
   });
+
+  describe('exports', () => {
+    it('parses default export assignment', async () => {
+      const code = `export default minimize;`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parses commonJs export assignment', async () => {
+      const code = `export = minimize;`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parses named exports', async () => {
+      const code = `export type { add, type sub };`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parses aliased named exports', async () => {
+      const code = `export { add as addition };`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parses named re-exports', async () => {
+      const code = `export { add, sub } from 'math';`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('compress multiline named exports to single line', async () => {
+      const code = `export {
+      type add, 
+      sub};`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(
+        `// #lines 1 - 3${EOL}export { type add, sub };`,
+      );
+    });
+
+    it('compress multiline re-exports to single line', async () => {
+      const code = `export {
+      type add, 
+      sub} from 'math';`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(
+        `// #lines 1 - 3${EOL}export { type add, sub } from 'math';`,
+      );
+    });
+
+    it('exclude inline comments in multiline exports', async () => {
+      const code = `export {
+      add, // add two numbers
+      sub};`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(
+        `// #lines 1 - 3${EOL}export { add, sub };`,
+      );
+    });
+
+    it('parses wildcard re-exports', async () => {
+      const code = `export * from 'math';`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parses re-exports as namespaces', async () => {
+      const code = `export type * as utils from 'math';`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+    });
+
+    it('parse multiple imports from different source', async () => {
+      const code = `export default minimize;
+      export { 
+      type add,
+      sub };
+      export { 
+      type readFile,
+      writeFile } from 'fs';
+      export * from './utils'
+      export * as utils from './utils'
+      export = minimize;
+      export = add;`;
+
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+      const result = await minimize('dummy.ts');
+
+      expect(result.originalLines).toBe(11);
+      expect(result.sketchLines).toBe(10);
+      expect(result.sketch?.trim()).toBe(
+        `export default minimize; // #line 1${EOL}// #lines 2 - 4${EOL}export { type add, sub };${EOL}// #lines 5 - 7${EOL}export { type readFile, writeFile } from 'fs';${EOL}export * from './utils'; // #line 8${EOL}export * as utils from './utils'; // #line 9${EOL}export = minimize; // #line 10${EOL}export = add; // #line 11`,
+      );
+    });
+  });
 });
