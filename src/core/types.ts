@@ -4,6 +4,13 @@ export interface ProjectStructure {
   tree: FileNode[];
 }
 
+export interface SketchResult {
+  path: string;
+  sketch: string;
+  originalLines: number;
+  sketchLines: number;
+}
+
 export interface FileNode {
   name: string;
   path: string;
