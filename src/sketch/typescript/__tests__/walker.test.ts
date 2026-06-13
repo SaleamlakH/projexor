@@ -9,7 +9,7 @@ vi.mock('fs/promises', () => ({
   },
 }));
 
-describe('minimize function', () => {
+describe('minimize', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
@@ -240,5 +240,130 @@ describe('minimize function', () => {
         `export default minimize; // #line 1${EOL}// #lines 2 - 4${EOL}export { type add, sub };${EOL}// #lines 5 - 7${EOL}export { type readFile, writeFile } from 'fs';${EOL}export * from './utils'; // #line 8${EOL}export * as utils from './utils'; // #line 9${EOL}export = minimize; // #line 10${EOL}export = add; // #line 11`,
       );
     });
+  });
+
+  describe('global variables', () => {
+    it('captures primitive variables', async () => {
+      const code = `
+const a = 1;
+const isA = false; 
+const languages = ['ts', 'js'];
+const user = {id: 1, name: 'alice'};
+`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(
+        `
+const a = 1; // #line 2
+const isA = false; // #line 3
+const languages = ['ts', 'js']; // #line 4
+const user = {id: 1, name: 'alice'}; // #line 5`.trim(),
+      );
+    });
+
+    it('captures multiline objects and arrays', async () => {
+      const code = `
+const languages = [
+  'ts',
+  'js'
+];
+
+const user = {
+  id: 1,
+  name: 'alice'
+};`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(
+        `
+// #lines 2 - 5
+const languages = [
+  'ts',
+  'js'
+];
+// #lines 7 - 10
+const user = {
+  id: 1,
+  name: 'alice'
+};`.trim(),
+      );
+    });
+
+    it('capture multiple declaration by a single flag', async () => {
+      const code = `
+const a = 1, b = 2;`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+      expect(result.sketch.trim()).toBe(
+        `
+const a = 1, b = 2; // #line 2`.trim(),
+      );
+    });
+
+    it('keep rhs multiline template literal without any change', async () => {
+      const code = `
+const query = \`
+  SELECT *
+  FROM users
+  WHERE id = 1\`;
+`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(
+        `
+// #lines 2 - 5
+const query = \`
+  SELECT *
+  FROM users
+  WHERE id = 1\`;`.trim(),
+      );
+    });
+
+    it('keep rhs ternary conditional without any change', async () => {
+      const code = `
+const role = user.admin ? 'admin' : 'user';
+const name = user
+  ? user.name
+  : undefined;
+`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(
+        `
+const role = user.admin ? 'admin' : 'user'; // #line 2
+// #lines 3 - 5
+const name = user
+  ? user.name
+  : undefined;`.trim(),
+      );
+    });
+
+    it('exclude inline comments on single line variables', async () => {
+      const code = `
+const a = 1; // start number
+const languages = ['ts', 'js']; // programming languages
+`;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await minimize('dummy.ts');
+
+      expect(result.sketch.trim()).toBe(
+        `
+const a = 1; // #line 2
+const languages = ['ts', 'js']; // #line 3`.trim(),
+      );
+    });
+
+    // minimize function expression, arrow functions,
+    // minimize object with function properties
+    // minimize class expression
   });
 });

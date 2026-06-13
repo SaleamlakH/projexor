@@ -13,7 +13,7 @@ export async function minimize(filePath: string): Promise<SketchResult> {
     true,
   );
 
-  const sketch = walker(sourceFile, '//');
+  const sketch = walker(sourceFile);
   return {
     sketch,
     path: filePath,
@@ -31,37 +31,59 @@ function getLine(pos: number, sourceFile: ts.SourceFile): number {
   return sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
 }
 
-function walker(sourceFile: ts.SourceFile, commentPrefix: string) {
+function walker(sourceFile: ts.SourceFile) {
   let sketch: string = '';
 
   sourceFile.forEachChild((node) => {
     if (ts.isImportDeclaration(node)) {
-      sketch += constructImportDecl(node, sourceFile, commentPrefix);
+      sketch += constructImportDecl(node, sourceFile);
     }
 
     if (ts.isImportEqualsDeclaration(node)) {
-      sketch += constructImportEqualDecl(node, sourceFile, commentPrefix);
+      sketch += constructImportEqualDecl(node, sourceFile);
     }
 
     if (ts.isExportAssignment(node)) {
-      sketch += constructExpAsmt(node, sourceFile, commentPrefix);
+      sketch += constructExpAsmt(node, sourceFile);
     }
 
     if (ts.isExportDeclaration(node)) {
-      sketch += constructExpDecl(node, sourceFile, commentPrefix);
+      sketch += constructExpDecl(node, sourceFile);
+    }
+
+    if (ts.isVariableStatement(node)) {
+      sketch += buildVariable(node, sourceFile);
     }
   });
 
   return sketch;
 }
 
+// write location comments
+function writeLocComments(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  content: string,
+) {
+  const startLine = getLine(node.getStart(sourceFile), sourceFile);
+  const endLine = getLine(node.getEnd(), sourceFile);
+
+  const headComment = `// #lines ${startLine} - ${endLine}`;
+  const inlineComment = `// #line ${startLine}`;
+
+  return startLine !== endLine
+    ? `${headComment}${EOL}${content}${EOL}`
+    : `${content} ${inlineComment}${EOL}`;
+}
+
+function buildVariable(node: ts.VariableStatement, sourceFile: ts.SourceFile) {
+  return writeLocComments(node, sourceFile, node.getText(sourceFile));
+}
+
 function constructImportDecl(
   node: ts.ImportDeclaration,
   sourceFile: ts.SourceFile,
-  commentPrefix: string,
 ) {
-  const startLine = getLine(node.getStart(), sourceFile);
-  const endLine = getLine(node.getEnd(), sourceFile);
   const source = (node.moduleSpecifier as ts.StringLiteral).text;
   const clause = node.importClause;
 
@@ -72,12 +94,11 @@ function constructImportDecl(
       ? `import ${parts.join(', ')} from '${source}';`
       : `import '${source}';`;
 
-    const headComment = `${commentPrefix} #lines ${startLine} - ${endLine}${EOL}`;
-    const inlineComment = `${commentPrefix} #line ${startLine}${EOL}`;
-
-    return startLine !== endLine
-      ? `${headComment}${combinedClause.replace(/\s+/g, ' ')}${EOL}`
-      : `${combinedClause.replace(/\s+/g, ' ')} ${inlineComment}`;
+    return writeLocComments(
+      node,
+      sourceFile,
+      combinedClause.replace(/\s+/g, ' '),
+    );
   };
 
   // side effect import
@@ -116,9 +137,7 @@ function constructImportDecl(
 function constructImportEqualDecl(
   node: ts.ImportEqualsDeclaration,
   sourceFile: ts.SourceFile,
-  commentPrefix: string,
 ) {
-  const line = getLine(node.getStart(), sourceFile);
   const modifiers = node.modifiers?.map((mod) => mod.getText(sourceFile));
 
   const alias = node.name.getText(sourceFile).trim();
@@ -128,41 +147,37 @@ function constructImportEqualDecl(
     .replace(/\s+/g, ' ')
     .trim();
 
-  return `import ${modifiers ? modifiers.join(' ') : ''}${alias} = ${moduleRef}; ${commentPrefix} #line ${line}${EOL}`;
+  const content = `import ${modifiers ? modifiers.join(' ') : ''}${alias} = ${moduleRef};`;
+  return writeLocComments(node, sourceFile, content);
 }
 
 function constructExpAsmt(
   node: ts.ExportAssignment,
   sourceFile: ts.SourceFile,
-  commentPrefix: string,
 ) {
-  const startLine = getLine(node.getStart(sourceFile), sourceFile);
-  return `${node.getText(sourceFile)} ${commentPrefix} #line ${startLine}${EOL}`;
+  return writeLocComments(node, sourceFile, node.getText(sourceFile));
 }
 
 function constructExpDecl(
   node: ts.ExportDeclaration,
   sourceFile: ts.SourceFile,
-  commentPrefix: string,
 ) {
-  const startLine = getLine(node.getStart(sourceFile), sourceFile);
-  const endLine = getLine(node.getEnd(), sourceFile);
   const source = node.moduleSpecifier?.getText(sourceFile);
   const parts: string[] = [];
 
   const writeExport = () => {
     const typePrefix = node.isTypeOnly ? ' type' : '';
-    const fromSource = source ? `from ${source}` : '';
-    const headComment = `${commentPrefix} #lines ${startLine} - ${endLine}${EOL}`;
-    const inlineComment = `${commentPrefix} #line ${startLine}${EOL}`;
+    const fromSource = source ? ` from ${source};` : ';';
 
     const combinedExport = parts.length
-      ? `export${typePrefix} ${parts.join(', ')} ${fromSource}`
+      ? `export${typePrefix} ${parts.join(', ')}${fromSource}`
       : `export * ${fromSource}`;
 
-    return startLine !== endLine
-      ? `${headComment}${combinedExport.trim().replace(/\s+/g, ' ')};${EOL}`
-      : `${combinedExport.trim().replace(/\s+/g, ' ')}; ${inlineComment}`;
+    return writeLocComments(
+      node,
+      sourceFile,
+      combinedExport.trim().replace(/\s+/g, ' '),
+    );
   };
 
   if (!node.exportClause) return writeExport();
