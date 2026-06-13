@@ -23,7 +23,7 @@ describe('minimize', () => {
 
       expect(result.path).toBe('dummy.ts');
       expect(result.originalLines).toBe(1);
-      expect(result.sketch?.trim()).toMatch(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toMatch(`${code} // @location-line: 1`);
     });
 
     it('parses default, and named combined import', async () => {
@@ -32,7 +32,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch?.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse namespace import', async () => {
@@ -41,7 +41,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch?.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse aliased named import', async () => {
@@ -50,7 +50,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch?.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse multiline named import', async () => {
@@ -66,7 +66,7 @@ describe('minimize', () => {
       expect(result.originalLines).toBe(4);
       expect(result.sketchLines).toBe(3);
       expect(result.sketch?.trim()).toBe(
-        `// #lines 1 - 4${EOL}import { readFile, writeFile } from 'fs';`,
+        `// @location-range: 1 - 4${EOL}import { readFile, writeFile } from 'fs';`,
       );
     });
 
@@ -81,7 +81,7 @@ describe('minimize', () => {
       const result = await minimize('dummy.ts');
 
       expect(result.sketch?.trim()).toBe(
-        `// #lines 1 - 4${EOL}import { readFile, writeFile } from 'fs';`,
+        `// @location-range: 1 - 4${EOL}import { readFile, writeFile } from 'fs';`,
       );
     });
 
@@ -91,7 +91,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch?.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse commonJs ts module import', async () => {
@@ -100,7 +100,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch?.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch?.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse multiple imports from different source', async () => {
@@ -118,7 +118,7 @@ describe('minimize', () => {
       expect(result.originalLines).toBe(7);
       expect(result.sketchLines).toBe(7);
       expect(result.sketch?.trim()).toBe(
-        `import 'dotenv'; // #line 1${EOL}// #lines 2 - 4${EOL}import fs, { type readFile, writeFile } from 'fs';${EOL}import * as utils from './utils'; // #line 5${EOL}import fs = require('fs'); // #line 6${EOL}import utils = require('./utils'); // #line 7`,
+        `import 'dotenv'; // @location-line: 1${EOL}// @location-range: 2 - 4${EOL}import fs, { type readFile, writeFile } from 'fs';${EOL}import * as utils from './utils'; // @location-line: 5${EOL}import fs = require('fs'); // @location-line: 6${EOL}import utils = require('./utils'); // @location-line: 7`,
       );
     });
   });
@@ -130,7 +130,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parses commonJs export assignment', async () => {
@@ -139,7 +139,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
 
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parses named exports', async () => {
@@ -147,7 +147,7 @@ describe('minimize', () => {
       vi.mocked(fs.readFile).mockResolvedValue(code);
 
       const result = await minimize('dummy.ts');
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parses aliased named exports', async () => {
@@ -155,7 +155,7 @@ describe('minimize', () => {
       vi.mocked(fs.readFile).mockResolvedValue(code);
 
       const result = await minimize('dummy.ts');
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parses named re-exports', async () => {
@@ -163,7 +163,7 @@ describe('minimize', () => {
       vi.mocked(fs.readFile).mockResolvedValue(code);
 
       const result = await minimize('dummy.ts');
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('compress multiline named exports to single line', async () => {
@@ -174,7 +174,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
       expect(result.sketch.trim()).toBe(
-        `// #lines 1 - 3${EOL}export { type add, sub };`,
+        `// @location-range: 1 - 3${EOL}export { type add, sub };`,
       );
     });
 
@@ -186,7 +186,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
       expect(result.sketch.trim()).toBe(
-        `// #lines 1 - 3${EOL}export { type add, sub } from 'math';`,
+        `// @location-range: 1 - 3${EOL}export { type add, sub } from 'math';`,
       );
     });
 
@@ -198,7 +198,7 @@ describe('minimize', () => {
 
       const result = await minimize('dummy.ts');
       expect(result.sketch.trim()).toBe(
-        `// #lines 1 - 3${EOL}export { add, sub };`,
+        `// @location-range: 1 - 3${EOL}export { add, sub };`,
       );
     });
 
@@ -207,7 +207,7 @@ describe('minimize', () => {
       vi.mocked(fs.readFile).mockResolvedValue(code);
 
       const result = await minimize('dummy.ts');
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parses re-exports as namespaces', async () => {
@@ -215,7 +215,7 @@ describe('minimize', () => {
       vi.mocked(fs.readFile).mockResolvedValue(code);
 
       const result = await minimize('dummy.ts');
-      expect(result.sketch.trim()).toBe(`${code} // #line 1`);
+      expect(result.sketch.trim()).toBe(`${code} // @location-line: 1`);
     });
 
     it('parse multiple imports from different source', async () => {
@@ -237,7 +237,7 @@ describe('minimize', () => {
       expect(result.originalLines).toBe(11);
       expect(result.sketchLines).toBe(10);
       expect(result.sketch?.trim()).toBe(
-        `export default minimize; // #line 1${EOL}// #lines 2 - 4${EOL}export { type add, sub };${EOL}// #lines 5 - 7${EOL}export { type readFile, writeFile } from 'fs';${EOL}export * from './utils'; // #line 8${EOL}export * as utils from './utils'; // #line 9${EOL}export = minimize; // #line 10${EOL}export = add; // #line 11`,
+        `export default minimize; // @location-line: 1${EOL}// @location-range: 2 - 4${EOL}export { type add, sub };${EOL}// @location-range: 5 - 7${EOL}export { type readFile, writeFile } from 'fs';${EOL}export * from './utils'; // @location-line: 8${EOL}export * as utils from './utils'; // @location-line: 9${EOL}export = minimize; // @location-line: 10${EOL}export = add; // @location-line: 11`,
       );
     });
   });
@@ -256,10 +256,10 @@ const user = {id: 1, name: 'alice'};
 
       expect(result.sketch.trim()).toBe(
         `
-const a = 1; // #line 2
-const isA = false; // #line 3
-const languages = ['ts', 'js']; // #line 4
-const user = {id: 1, name: 'alice'}; // #line 5`.trim(),
+const a = 1; // @location-line: 2
+const isA = false; // @location-line: 3
+const languages = ['ts', 'js']; // @location-line: 4
+const user = {id: 1, name: 'alice'}; // @location-line: 5`.trim(),
       );
     });
 
@@ -279,12 +279,12 @@ const user = {
       const result = await minimize('dummy.ts');
       expect(result.sketch.trim()).toBe(
         `
-// #lines 2 - 5
+// @location-range: 2 - 5
 const languages = [
   'ts',
   'js'
 ];
-// #lines 7 - 10
+// @location-range: 7 - 10
 const user = {
   id: 1,
   name: 'alice'
@@ -300,7 +300,7 @@ const a = 1, b = 2;`;
       const result = await minimize('dummy.ts');
       expect(result.sketch.trim()).toBe(
         `
-const a = 1, b = 2; // #line 2`.trim(),
+const a = 1, b = 2; // @location-line: 2`.trim(),
       );
     });
 
@@ -317,7 +317,7 @@ const query = \`
 
       expect(result.sketch.trim()).toBe(
         `
-// #lines 2 - 5
+// @location-range: 2 - 5
 const query = \`
   SELECT *
   FROM users
@@ -338,8 +338,8 @@ const name = user
 
       expect(result.sketch.trim()).toBe(
         `
-const role = user.admin ? 'admin' : 'user'; // #line 2
-// #lines 3 - 5
+const role = user.admin ? 'admin' : 'user'; // @location-line: 2
+// @location-range: 3 - 5
 const name = user
   ? user.name
   : undefined;`.trim(),
@@ -357,8 +357,8 @@ const languages = ['ts', 'js']; // programming languages
 
       expect(result.sketch.trim()).toBe(
         `
-const a = 1; // #line 2
-const languages = ['ts', 'js']; // #line 3`.trim(),
+const a = 1; // @location-line: 2
+const languages = ['ts', 'js']; // @location-line: 3`.trim(),
       );
     });
 

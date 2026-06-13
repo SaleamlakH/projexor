@@ -68,8 +68,8 @@ function writeLocComments(
   const startLine = getLine(node.getStart(sourceFile), sourceFile);
   const endLine = getLine(node.getEnd(), sourceFile);
 
-  const headComment = `// #lines ${startLine} - ${endLine}`;
-  const inlineComment = `// #line ${startLine}`;
+  const headComment = `// @location-range: ${startLine} - ${endLine}`;
+  const inlineComment = `// @location-line: ${startLine}`;
 
   return startLine !== endLine
     ? `${headComment}${EOL}${content}${EOL}`
