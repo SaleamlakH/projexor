@@ -54,6 +54,38 @@ function walker(sourceFile: ts.SourceFile) {
     if (ts.isVariableStatement(node)) {
       sketch += buildVariable(node, sourceFile);
     }
+
+    if (ts.isFunctionDeclaration(node)) {
+      sketch += buildFunction(node, sourceFile);
+    }
+
+    if (ts.isClassDeclaration(node)) {
+      sketch += buildClass(node, sourceFile);
+    }
+
+    if (ts.isIfStatement(node)) {
+      sketch += writeLocComments(
+        node,
+        sourceFile,
+        buildIfStatement(node, sourceFile),
+      );
+    }
+
+    if (ts.isForStatement(node)) {
+      sketch += buildFor(node, sourceFile);
+    }
+
+    if (ts.isWhileStatement(node)) {
+      sketch += buildWhile(node, sourceFile);
+    }
+
+    if (ts.isDoStatement(node)) {
+      sketch += buildDoWhile(node, sourceFile);
+    }
+
+    if (ts.isTryStatement(node)) {
+      sketch += buildTry(node, sourceFile);
+    }
   });
 
   return sketch;
@@ -76,8 +108,114 @@ function writeLocComments(
     : `${content} ${inlineComment}${EOL}`;
 }
 
+function extractBlockHeader(node: ts.Node, sourceFile: ts.SourceFile) {
+  const headerNodes: string[] = [];
+  const children = node.getChildren(sourceFile);
+  for (const child of children) {
+    if (child.kind === ts.SyntaxKind.Block) break;
+
+    const text = child.getText(sourceFile).trim();
+    if (text === '{') break;
+
+    headerNodes.push(text);
+  }
+
+  const pattern =
+    ts.isFunctionLike(node) && node.name ? /^[.,:;()[\]]/ : /^[.,:;)[\]]/;
+  const header = headerNodes
+    .reduce((acc: string, text: string) => {
+      if (acc === '') return text;
+      if (pattern.test(text) || acc.endsWith('(') || acc.endsWith('[')) {
+        return `${acc}${text}`;
+      }
+      return `${acc} ${text}`;
+    }, '')
+    .replace(/\s+/g, ' ');
+
+  return header.trim();
+}
+
 function buildVariable(node: ts.VariableStatement, sourceFile: ts.SourceFile) {
-  return writeLocComments(node, sourceFile, node.getText(sourceFile));
+  const declarations = node.declarationList.declarations.map((decl) => {
+    const variableName = decl.name.getText(sourceFile);
+    if (ts.isFunctionLike(decl.initializer)) {
+      const header = extractBlockHeader(decl.initializer, sourceFile);
+      return `${variableName} = ${header} {}`;
+    }
+
+    return decl.getText(sourceFile);
+  });
+
+  const modifiers = node.modifiers
+    ?.map((mod) => mod.getText(sourceFile))
+    .join(' ');
+  const flags = node.declarationList.flags;
+  const declKeyword =
+    (flags & ts.NodeFlags.Const) !== 0
+      ? 'const'
+      : (flags & ts.NodeFlags.Let) !== 0
+        ? 'let'
+        : 'var';
+
+  const content = `${modifiers ? modifiers + ' ' : ''}${declKeyword} ${declarations.join(', ')}`;
+  return writeLocComments(node, sourceFile, content);
+}
+
+function buildFunction(
+  node: ts.FunctionDeclaration,
+  sourceFile: ts.SourceFile,
+) {
+  const header = extractBlockHeader(node, sourceFile);
+  return writeLocComments(node, sourceFile, `${header} {}`);
+}
+
+function buildClass(node: ts.ClassDeclaration, sourceFile: ts.SourceFile) {
+  const header = extractBlockHeader(node, sourceFile);
+  return writeLocComments(node, sourceFile, `${header} {}`);
+}
+
+function buildIfStatement(
+  node: ts.IfStatement,
+  sourceFile: ts.SourceFile,
+): string {
+  const header = extractBlockHeader(node, sourceFile);
+  const ifStmt = `${header} {}`;
+
+  const elseStatement = node.elseStatement;
+  if (!elseStatement) return `${ifStmt}`;
+
+  if (ts.isIfStatement(elseStatement)) {
+    const nestedHeader = buildIfStatement(elseStatement, sourceFile);
+    return `${ifStmt}${EOL}else ${nestedHeader}`;
+  }
+
+  return `${ifStmt}${EOL}else {}`; // body
+}
+
+function buildFor(node: ts.ForStatement, sourceFile: ts.SourceFile) {
+  const header = extractBlockHeader(node, sourceFile);
+  return writeLocComments(node, sourceFile, `${header} {}`);
+}
+
+function buildWhile(node: ts.WhileStatement, sourceFile: ts.SourceFile) {
+  const header = extractBlockHeader(node, sourceFile);
+  return writeLocComments(node, sourceFile, `${header} {}`);
+}
+
+function buildDoWhile(node: ts.DoStatement, sourceFile: ts.SourceFile) {
+  const doWhile = `do {} while (${node.expression.getText(sourceFile)})`;
+  return writeLocComments(node, sourceFile, doWhile);
+}
+
+function buildTry(node: ts.TryStatement, sourceFile: ts.SourceFile) {
+  const catchClause = node.catchClause
+    ? extractBlockHeader(node.catchClause, sourceFile)
+    : '';
+
+  const finallyBlock = node.finallyBlock ? `finally {}` : '';
+
+  const tryStmt = `try {}${EOL}${catchClause} {}${EOL}${finallyBlock}`;
+  return writeLocComments(node, sourceFile, tryStmt);
 }
 
 function constructImportDecl(
