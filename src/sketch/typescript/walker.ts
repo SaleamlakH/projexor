@@ -13,7 +13,11 @@ export async function minimize(filePath: string): Promise<SketchResult> {
     true,
   );
 
-  const sketch = walker(sourceFile);
+  let sketch: string = '';
+  sourceFile.forEachChild((node) => {
+    sketch += visit(node, sourceFile);
+  });
+
   return {
     sketch,
     path: filePath,
@@ -31,64 +35,60 @@ function getLine(pos: number, sourceFile: ts.SourceFile): number {
   return sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
 }
 
-function walker(sourceFile: ts.SourceFile) {
+function visit(node: ts.Node, sourceFile: ts.SourceFile, indentLevel = 0) {
   let sketch: string = '';
 
-  sourceFile.forEachChild((node) => {
-    if (ts.isImportDeclaration(node)) {
-      sketch += constructImportDecl(node, sourceFile);
-    }
+  if (ts.isImportDeclaration(node)) {
+    sketch = constructImportDecl(node, sourceFile);
+  }
 
-    if (ts.isImportEqualsDeclaration(node)) {
-      sketch += constructImportEqualDecl(node, sourceFile);
-    }
+  if (ts.isImportEqualsDeclaration(node)) {
+    sketch = constructImportEqualDecl(node, sourceFile);
+  }
 
-    if (ts.isExportAssignment(node)) {
-      sketch += constructExpAsmt(node, sourceFile);
-    }
+  if (ts.isExportAssignment(node)) {
+    sketch = constructExpAsmt(node, sourceFile);
+  }
 
-    if (ts.isExportDeclaration(node)) {
-      sketch += constructExpDecl(node, sourceFile);
-    }
+  if (ts.isExportDeclaration(node)) {
+    sketch = constructExpDecl(node, sourceFile);
+  }
 
-    if (ts.isVariableStatement(node)) {
-      sketch += buildVariable(node, sourceFile);
-    }
+  if (ts.isVariableStatement(node)) {
+    sketch = buildVariable(node, sourceFile);
+  }
 
-    if (ts.isFunctionDeclaration(node)) {
-      sketch += buildFunction(node, sourceFile);
-    }
+  if (ts.isFunctionDeclaration(node)) {
+    sketch = buildFunction(node, sourceFile, indentLevel);
+  }
 
-    if (ts.isClassDeclaration(node)) {
-      sketch += buildClass(node, sourceFile);
-    }
+  if (ts.isClassDeclaration(node)) {
+    sketch = buildClass(node, sourceFile);
+  }
 
-    if (ts.isIfStatement(node)) {
-      sketch += writeLocComments(
-        node,
-        sourceFile,
-        buildIfStatement(node, sourceFile),
-      );
-    }
+  if (ts.isIfStatement(node)) {
+    const ifStmt = buildIfStatement(node, sourceFile, indentLevel);
+    const indent = ' '.repeat(indentLevel);
+    sketch = indent + ifStmt;
+  }
 
-    if (ts.isForStatement(node)) {
-      sketch += buildFor(node, sourceFile);
-    }
+  if (ts.isForStatement(node)) {
+    sketch = buildFor(node, sourceFile);
+  }
 
-    if (ts.isWhileStatement(node)) {
-      sketch += buildWhile(node, sourceFile);
-    }
+  if (ts.isWhileStatement(node)) {
+    sketch = buildWhile(node, sourceFile);
+  }
 
-    if (ts.isDoStatement(node)) {
-      sketch += buildDoWhile(node, sourceFile);
-    }
+  if (ts.isDoStatement(node)) {
+    sketch = buildDoWhile(node, sourceFile, indentLevel);
+  }
 
-    if (ts.isTryStatement(node)) {
-      sketch += buildTry(node, sourceFile);
-    }
-  });
+  if (ts.isTryStatement(node)) {
+    sketch = buildTry(node, sourceFile, indentLevel);
+  }
 
-  return sketch;
+  return sketch ? writeLocComments(node, sourceFile, sketch) : sketch;
 }
 
 // write location comments
@@ -135,16 +135,25 @@ function extractBlockHeader(node: ts.Node, sourceFile: ts.SourceFile) {
   return header.trim();
 }
 
-function buildVariable(node: ts.VariableStatement, sourceFile: ts.SourceFile) {
-  const declarations = node.declarationList.declarations.map((decl) => {
+function buildVariable(
+  node: ts.VariableStatement,
+  sourceFile: ts.SourceFile,
+  checkNode?: (node?: ts.Node) => boolean,
+) {
+  const declarations: string[] = [];
+  for (const decl of node.declarationList.declarations) {
     const variableName = decl.name.getText(sourceFile);
-    if (ts.isFunctionLike(decl.initializer)) {
-      const header = extractBlockHeader(decl.initializer, sourceFile);
-      return `${variableName} = ${header} {}`;
+    const initializer = decl.initializer;
+    if (ts.isFunctionLike(initializer)) {
+      const header = extractBlockHeader(initializer, sourceFile);
+      declarations.push(`${variableName} = ${header} {}`);
+      continue;
     }
 
-    return decl.getText(sourceFile);
-  });
+    // check decision
+    if (checkNode && !checkNode(initializer)) return '';
+    declarations.push(decl.getText(sourceFile));
+  }
 
   const modifiers = node.modifiers
     ?.map((mod) => mod.getText(sourceFile))
@@ -157,26 +166,39 @@ function buildVariable(node: ts.VariableStatement, sourceFile: ts.SourceFile) {
         ? 'let'
         : 'var';
 
-  const content = `${modifiers ? modifiers + ' ' : ''}${declKeyword} ${declarations.join(', ')}`;
-  return writeLocComments(node, sourceFile, content);
+  return `${modifiers ? modifiers + ' ' : ''}${declKeyword} ${declarations.join(', ')}`;
 }
 
 function buildFunction(
   node: ts.FunctionDeclaration,
   sourceFile: ts.SourceFile,
+  indentLevel: number,
 ) {
   const header = extractBlockHeader(node, sourceFile);
-  return writeLocComments(node, sourceFile, `${header} {}`);
+
+  if (!node.body) return header;
+
+  if (!node.body.statements.length) return `${header} {}`;
+
+  const parameters: string[] = [];
+  node.parameters.map((p) =>
+    parameters.push(...getVariableNames(p, sourceFile)),
+  );
+
+  const block = buildBlock(node.body, sourceFile, indentLevel + 2, parameters);
+
+  return `${header} ${block}`;
 }
 
 function buildClass(node: ts.ClassDeclaration, sourceFile: ts.SourceFile) {
   const header = extractBlockHeader(node, sourceFile);
-  return writeLocComments(node, sourceFile, `${header} {}`);
+  return `${header} {}`;
 }
 
 function buildIfStatement(
   node: ts.IfStatement,
   sourceFile: ts.SourceFile,
+  indentLevel: number = 0,
 ): string {
   const header = extractBlockHeader(node, sourceFile);
   const ifStmt = `${header} {}`;
@@ -185,37 +207,176 @@ function buildIfStatement(
   if (!elseStatement) return `${ifStmt}`;
 
   if (ts.isIfStatement(elseStatement)) {
-    const nestedHeader = buildIfStatement(elseStatement, sourceFile);
-    return `${ifStmt}${EOL}else ${nestedHeader}`;
+    const nestedHeader = buildIfStatement(
+      elseStatement,
+      sourceFile,
+      indentLevel,
+    );
+    return `${ifStmt}${EOL}${' '.repeat(indentLevel)}else ${nestedHeader}`;
   }
 
-  return `${ifStmt}${EOL}else {}`; // body
+  return `${ifStmt}${EOL}${' '.repeat(indentLevel)}else {}`;
 }
 
 function buildFor(node: ts.ForStatement, sourceFile: ts.SourceFile) {
   const header = extractBlockHeader(node, sourceFile);
-  return writeLocComments(node, sourceFile, `${header} {}`);
+  return `${header} {}`;
 }
 
 function buildWhile(node: ts.WhileStatement, sourceFile: ts.SourceFile) {
   const header = extractBlockHeader(node, sourceFile);
-  return writeLocComments(node, sourceFile, `${header} {}`);
+  return `${header} {}`;
 }
 
-function buildDoWhile(node: ts.DoStatement, sourceFile: ts.SourceFile) {
+function buildDoWhile(
+  node: ts.DoStatement,
+  sourceFile: ts.SourceFile,
+  indentLevel = 0,
+) {
   const doWhile = `do {} while (${node.expression.getText(sourceFile)})`;
-  return writeLocComments(node, sourceFile, doWhile);
+  const indent = ' '.repeat(indentLevel);
+  return indent + doWhile;
 }
 
-function buildTry(node: ts.TryStatement, sourceFile: ts.SourceFile) {
+function buildTry(
+  node: ts.TryStatement,
+  sourceFile: ts.SourceFile,
+  indentLevel = 0,
+) {
   const catchClause = node.catchClause
     ? extractBlockHeader(node.catchClause, sourceFile)
     : '';
 
   const finallyBlock = node.finallyBlock ? `finally {}` : '';
 
-  const tryStmt = `try {}${EOL}${catchClause} {}${EOL}${finallyBlock}`;
-  return writeLocComments(node, sourceFile, tryStmt);
+  const indent = ' '.repeat(indentLevel);
+  const tryStmt = `${indent}try {}${EOL}${indent}${catchClause} {}${EOL}${indent}${finallyBlock}`;
+  return tryStmt;
+}
+
+// --- inside blocks ---
+function buildBlock(
+  block: ts.Block,
+  sourceFile: ts.SourceFile,
+  indentLevel: number,
+  locals: string[],
+): string {
+  const blockStmts: string[] = [];
+  const indent = ' '.repeat(indentLevel);
+  for (const stmt of block.statements) {
+    if (ts.isReturnStatement(stmt) || ts.isThrowStatement(stmt)) {
+      blockStmts.push(
+        writeLocComments(stmt, sourceFile, indent + stmt.getText(sourceFile)),
+      );
+      continue;
+    }
+
+    if (ts.isExpressionStatement(stmt)) {
+      const checkNode = createScanner(locals, sourceFile);
+      const keepStmt = checkNode(stmt.expression);
+      if (keepStmt) {
+        const expression = indent + stmt.expression.getText(sourceFile);
+        blockStmts.push(writeLocComments(stmt, sourceFile, expression));
+      }
+
+      continue;
+    }
+
+    if (ts.isVariableStatement(stmt)) {
+      const checkNode = createScanner(locals, sourceFile);
+      const varStmt = buildVariable(stmt, sourceFile, checkNode);
+      const varWithLocComment = writeLocComments(
+        stmt,
+        sourceFile,
+        indent + varStmt,
+      );
+
+      if (varStmt) {
+        if (varWithLocComment.startsWith('//'))
+          blockStmts.push(indent + varWithLocComment);
+        else blockStmts.push(varWithLocComment);
+      }
+
+      const variableNames = getVariableNames(stmt, sourceFile);
+      locals.push(...variableNames);
+      continue;
+    }
+
+    const result = visit(stmt, sourceFile, indentLevel);
+    blockStmts.push(indent + result);
+  }
+
+  const contents = blockStmts.join('');
+  return contents ? `{${EOL}${contents}}` : '{}';
+}
+
+function createScanner(locals: string[], sourceFile: ts.SourceFile) {
+  return function checkNode(node?: ts.Node): boolean {
+    if (!node) return false;
+    let keepStatement = false;
+
+    function scan(node: ts.Node) {
+      if (keepStatement) return;
+
+      if (
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isClassExpression(node) ||
+        ts.isMethodDeclaration(node)
+      ) {
+        keepStatement = true;
+      }
+
+      if (ts.isIdentifier(node)) {
+        const isPropertyKey =
+          ts.isPropertyAccessExpression(node.parent) &&
+          node.parent.name === node;
+        const isObjectKey =
+          ts.isPropertyAssignment(node.parent) && node.parent.name === node;
+
+        const isLocal = locals.includes(node.getText(sourceFile));
+
+        if (!isPropertyKey && !isObjectKey && !isLocal) {
+          keepStatement = true;
+          return;
+        }
+      }
+
+      ts.forEachChild(node, scan);
+    }
+
+    scan(node);
+    return keepStatement;
+  };
+}
+
+function getVariableNames(
+  node: ts.VariableStatement | ts.ParameterDeclaration,
+  sourceFile: ts.SourceFile,
+) {
+  const variables: string[] = [];
+
+  const getVariables = (binding: ts.BindingName) => {
+    if (ts.isIdentifier(binding)) {
+      variables.push(binding.getText(sourceFile));
+    } else {
+      binding.elements.forEach((el) => {
+        if (!ts.isOmittedExpression(el)) {
+          getVariables(el.name);
+        }
+      });
+    }
+  };
+
+  if (ts.isVariableStatement(node)) {
+    node.declarationList.declarations.forEach((decl) => {
+      getVariables(decl.name);
+    });
+  } else {
+    getVariables(node.name);
+  }
+
+  return variables;
 }
 
 function constructImportDecl(
@@ -232,11 +393,7 @@ function constructImportDecl(
       ? `import ${parts.join(', ')} from '${source}';`
       : `import '${source}';`;
 
-    return writeLocComments(
-      node,
-      sourceFile,
-      combinedClause.replace(/\s+/g, ' '),
-    );
+    return combinedClause.replace(/\s+/g, ' ');
   };
 
   // side effect import
@@ -285,15 +442,14 @@ function constructImportEqualDecl(
     .replace(/\s+/g, ' ')
     .trim();
 
-  const content = `import ${modifiers ? modifiers.join(' ') : ''}${alias} = ${moduleRef};`;
-  return writeLocComments(node, sourceFile, content);
+  return `import ${modifiers ? modifiers.join(' ') : ''}${alias} = ${moduleRef};`;
 }
 
 function constructExpAsmt(
   node: ts.ExportAssignment,
   sourceFile: ts.SourceFile,
 ) {
-  return writeLocComments(node, sourceFile, node.getText(sourceFile));
+  return node.getText(sourceFile);
 }
 
 function constructExpDecl(
@@ -311,11 +467,7 @@ function constructExpDecl(
       ? `export${typePrefix} ${parts.join(', ')}${fromSource}`
       : `export * ${fromSource}`;
 
-    return writeLocComments(
-      node,
-      sourceFile,
-      combinedExport.trim().replace(/\s+/g, ' '),
-    );
+    return combinedExport.trim().replace(/\s+/g, ' ');
   };
 
   if (!node.exportClause) return writeExport();

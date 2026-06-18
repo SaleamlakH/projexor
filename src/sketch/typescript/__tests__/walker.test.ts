@@ -587,4 +587,542 @@ finally {}`.trim(),
       });
     });
   });
+
+  describe('inside blocks {}', () => {
+    describe('function and class declarations and expressions', () => {
+      it('keeps internal functions (declaration, and expression)', async () => {
+        const code = `
+function test() {
+  function internalFnDecl(name, age) {}
+  const fnExp = function (name, age) {}
+  const fnArr = (name, age) => {}
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 6
+function test() {
+  function internalFnDecl(name, age) {} // @location-line: 3
+  const fnExp = function (name, age) {} // @location-line: 4
+  const fnArr = (name, age) => {} // @location-line: 5
+}`.trim(),
+        );
+      });
+
+      it('keeps class declaration, and expression', async () => {
+        const code = `
+function test() {
+  class Minimize {}
+  const Mini = class {}
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 5
+function test() {
+  class Minimize {} // @location-line: 3
+  const Mini = class {} // @location-line: 4
+}`.trim(),
+        );
+      });
+    });
+
+    describe('nested structures (if, for, while, do while, try)', () => {
+      it('keeps if  conditional structure', async () => {
+        const code = `
+function test() {
+  if (x < 18) {
+  } else if (x < 22) {
+  } else {
+  }
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 7
+function test() {
+  // @location-range: 3 - 6
+  if (x < 18) {}
+  else if (x < 22) {}
+  else {}
+}`.trim(),
+        );
+      });
+
+      it('keeps for loop structure', async () => {
+        const code = `
+function test() {
+  for (let i = 0; i < 10; i++) {}
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  for (let i = 0; i < 10; i++) {} // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps while loop structure', async () => {
+        const code = `
+function test() {
+  while (i < 10) {}
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  while (i < 10) {} // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps do...while loop structure', async () => {
+        const code = `
+function test() {
+  do {
+  } while (i < 10)
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 5
+function test() {
+  // @location-range: 3 - 4
+  do {} while (i < 10)
+}`.trim(),
+        );
+      });
+
+      it('keeps try catch finally block', async () => {
+        const code = `
+function test() {
+  try {
+  } catch (error) {
+  } finally {
+  }
+}`;
+
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 7
+function test() {
+  // @location-range: 3 - 6
+  try {}
+  catch (error) {}
+  finally {}
+}`.trim(),
+        );
+      });
+    });
+
+    describe('external dependency (global)', () => {
+      it('keeps only external referenced variables', async () => {
+        const code = `
+function test() {
+  const a = 1;
+  const x = name
+  const y = a;
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 6
+function test() {
+  const x = name // @location-line: 4
+}`.trim(),
+        );
+      });
+
+      it('keeps binary expressions when they include global values', async () => {
+        const code = `
+function test() {
+  const a = 1;
+  const b = 2;
+  const x = a + b;
+  const y = 1 + 2;
+  const z = a + limit;
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 8
+function test() {
+  const z = a + limit // @location-line: 7
+}`.trim(),
+        );
+      });
+
+      it('keeps unary expressions when operand is global values', async () => {
+        const code = `
+function test() {
+  const flag = true;
+  const a = !true;
+  const b = !flag;
+  const c = !isValid;
+  const d = count++;
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 8
+function test() {
+  const c = !isValid // @location-line: 6
+  const d = count++ // @location-line: 7
+}`.trim(),
+        );
+      });
+
+      it('keeps property access if base object is global values', async () => {
+        const code = `
+function test() {
+  const user = { name: 'alice' };
+  const a = user.name;
+  const b = external.profile.name;
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 6
+function test() {
+  const b = external.profile.name // @location-line: 5
+}`.trim(),
+        );
+      });
+
+      it('keeps element access on global', async () => {
+        const code = `
+function test() {
+  const cache = {};
+  const a = cache['key'];
+  const b = store[id];
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 6
+function test() {
+  const b = store[id] // @location-line: 5
+}`.trim(),
+        );
+      });
+
+      it('keeps element access on local when key is not local', async () => {
+        const code = `
+function test() {
+  const cache = {};
+  const a = cache['key'];
+  const b = cache[key];
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 6
+function test() {
+  const b = cache[key] // @location-line: 5
+}`.trim(),
+        );
+      });
+
+      it('keeps array with external reference', async () => {
+        const code = `
+function test() {
+  const local = 'local';
+  const a = [1, local + 1, !true, local.length, local[0]];
+  const b = [1, external + 1];
+  const c = [1, !external];
+  const d = [1, external.length];
+  const e = [1, cache[external]];
+  const f = [1, external];
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 10
+function test() {
+  const b = [1, external + 1] // @location-line: 5
+  const c = [1, !external] // @location-line: 6
+  const d = [1, external.length] // @location-line: 7
+  const e = [1, cache[external]] // @location-line: 8
+  const f = [1, external] // @location-line: 9
+}`.trim(),
+        );
+      });
+
+      it('keeps object with external reference', async () => {
+        const code = `
+function test() {
+  const local = 'local';
+  const a = { x: local + 1, y: !true, z: local.length, w: local[0] };
+  const b = { x: external + 1 };
+  const c = { x: !external };
+  const d = { x: external.length };
+  const e = { x: cache[external] };
+  const f = { x: external };
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 10
+function test() {
+  const b = { x: external + 1 } // @location-line: 5
+  const c = { x: !external } // @location-line: 6
+  const d = { x: external.length } // @location-line: 7
+  const e = { x: cache[external] } // @location-line: 8
+  const f = { x: external } // @location-line: 9
+}`.trim(),
+        );
+      });
+
+      it('drops references to parameters', async () => {
+        const code = `
+function test(name: string, age: number) {
+  const cache = {};
+  const a = name;
+  const b = age + 1;
+  const c = !name;
+  const d = name.length;
+  const e = cache[name];
+  const f = [1, name + 1, !age, name.length, cache[name]];
+  const g = { x: name + 1, y: !age, z: name.length, w: cache[name] };
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 11
+function test(name: string, age: number) {}`.trim(),
+        );
+      });
+    });
+
+    describe('calls', () => {
+      it('keeps standalone call', async () => {
+        const code = `
+function test() {
+  log();
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  log() // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps awaited call', async () => {
+        const code = `
+async function test() {
+  await fetchUser();
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+async function test() {
+  await fetchUser() // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps variable which contains call', async () => {
+        const code = `
+function test() {
+  const a = get() + 1;
+  const b = !get();
+  const c = get().property;
+  const d = cache[get()];
+  const e = [1, get()];
+  const f = { x: get() };
+  const x = get() ?? fallback();
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 10
+function test() {
+  const a = get() + 1 // @location-line: 3
+  const b = !get() // @location-line: 4
+  const c = get().property // @location-line: 5
+  const d = cache[get()] // @location-line: 6
+  const e = [1, get()] // @location-line: 7
+  const f = { x: get() } // @location-line: 8
+  const x = get() ?? fallback() // @location-line: 9
+}`.trim(),
+        );
+      });
+
+      it('keeps method call on global', async () => {
+        const code = `
+function test(param: User) {
+  const local = {};
+  local.getName();
+  param.getName();
+  external.getName();
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 7
+function test(param: User) {
+  external.getName() // @location-line: 6
+}`.trim(),
+        );
+      });
+
+      it('keeps call assigned to local', async () => {
+        const code = `
+function test() {
+  const x = format();
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  const x = format() // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps method call on local with call arguments', async () => {
+        const code = `
+function test() {
+  const local = [1, 2, 3];
+  local.push(getLevel());
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 5
+function test() {
+  local.push(getLevel()) // @location-line: 4
+}`.trim(),
+        );
+      });
+
+      it('keeps method call on local with external referenced argument', async () => {
+        const code = `
+function test() {
+  const local = [1, 2, 3];
+  local.push(next);
+  local.push(next + 1);
+  local.push(external.length);
+  local.push(cache[limit]);
+}`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 8
+function test() {
+  local.push(next) // @location-line: 4
+  local.push(next + 1) // @location-line: 5
+  local.push(external.length) // @location-line: 6
+  local.push(cache[limit]) // @location-line: 7
+}`.trim(),
+        );
+      });
+    });
+
+    describe('return and throw', () => {
+      it('keeps returns', async () => {
+        const code = `
+function test() {
+  return 1
+};`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  return 1 // @location-line: 3
+}`.trim(),
+        );
+      });
+
+      it('keeps throws', async () => {
+        const code = `
+function test() {
+  throw new Error('message');
+};`;
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(
+          `
+// @location-range: 2 - 4
+function test() {
+  throw new Error('message'); // @location-line: 3
+}`.trim(),
+        );
+      });
+    });
+  });
 });
