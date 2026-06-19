@@ -73,11 +73,11 @@ function visit(node: ts.Node, sourceFile: ts.SourceFile, indentLevel = 0) {
   }
 
   if (ts.isForStatement(node)) {
-    sketch = buildFor(node, sourceFile);
+    sketch = buildFor(node, sourceFile, indentLevel);
   }
 
   if (ts.isWhileStatement(node)) {
-    sketch = buildWhile(node, sourceFile);
+    sketch = buildWhile(node, sourceFile, indentLevel);
   }
 
   if (ts.isDoStatement(node)) {
@@ -198,10 +198,15 @@ function buildClass(node: ts.ClassDeclaration, sourceFile: ts.SourceFile) {
 function buildIfStatement(
   node: ts.IfStatement,
   sourceFile: ts.SourceFile,
-  indentLevel: number = 0,
+  indentLevel: number,
 ): string {
+  const indent = ' '.repeat(indentLevel);
   const header = extractBlockHeader(node, sourceFile);
-  const ifStmt = `${header} {}`;
+  const ifBlock = ts.isBlock(node.thenStatement)
+    ? buildBlock(node.thenStatement, sourceFile, indentLevel + 2, [])
+    : node.getText(sourceFile);
+
+  const ifStmt = `${header} ${ifBlock}`;
 
   const elseStatement = node.elseStatement;
   if (!elseStatement) return `${ifStmt}`;
@@ -212,46 +217,99 @@ function buildIfStatement(
       sourceFile,
       indentLevel,
     );
-    return `${ifStmt}${EOL}${' '.repeat(indentLevel)}else ${nestedHeader}`;
+    return `${ifStmt}${EOL}${indent}else ${nestedHeader}`;
   }
 
-  return `${ifStmt}${EOL}${' '.repeat(indentLevel)}else {}`;
+  if (ts.isIfStatement(elseStatement)) {
+    const nestedHeader = buildIfStatement(
+      elseStatement,
+      sourceFile,
+      indentLevel,
+    );
+    return `${ifStmt}${EOL}${indent}else ${nestedHeader}`;
+  }
+
+  const elseBlock = buildBlock(
+    node.elseStatement as ts.Block,
+    sourceFile,
+    indentLevel,
+    [],
+  );
+  return `${ifStmt}${EOL}${indent}else ${elseBlock}`;
 }
 
-function buildFor(node: ts.ForStatement, sourceFile: ts.SourceFile) {
+function buildFor(
+  node: ts.ForStatement,
+  sourceFile: ts.SourceFile,
+  indentLevel: number,
+) {
   const header = extractBlockHeader(node, sourceFile);
-  return `${header} {}`;
+  const block = buildBlock(
+    node.statement as ts.Block,
+    sourceFile,
+    indentLevel + 2,
+    [],
+  );
+  return `${header} ${block}`;
 }
 
-function buildWhile(node: ts.WhileStatement, sourceFile: ts.SourceFile) {
+function buildWhile(
+  node: ts.WhileStatement,
+  sourceFile: ts.SourceFile,
+  indentLevel: number,
+) {
   const header = extractBlockHeader(node, sourceFile);
-  return `${header} {}`;
+  const block = buildBlock(
+    node.statement as ts.Block,
+    sourceFile,
+    indentLevel + 2,
+    [],
+  );
+  return `${header} ${block}`;
 }
 
 function buildDoWhile(
   node: ts.DoStatement,
   sourceFile: ts.SourceFile,
-  indentLevel = 0,
+  indentLevel: number,
 ) {
-  const doWhile = `do {} while (${node.expression.getText(sourceFile)})`;
   const indent = ' '.repeat(indentLevel);
+  const block = buildBlock(
+    node.statement as ts.Block,
+    sourceFile,
+    indentLevel + 2,
+    [],
+  );
+  const doWhile = `do ${block} while (${node.expression.getText(sourceFile)})`;
   return indent + doWhile;
 }
 
 function buildTry(
   node: ts.TryStatement,
   sourceFile: ts.SourceFile,
-  indentLevel = 0,
+  indentLevel: number,
 ) {
-  const catchClause = node.catchClause
-    ? extractBlockHeader(node.catchClause, sourceFile)
+  const tryBlock = buildBlock(node.tryBlock, sourceFile, indentLevel + 2, []);
+
+  let catchClause: string = '';
+  if (node.catchClause) {
+    const header = extractBlockHeader(node.catchClause, sourceFile);
+    const block = buildBlock(
+      node.catchClause.block,
+      sourceFile,
+      indentLevel + 2,
+      [],
+    );
+
+    catchClause = `${header} ${block}`;
+  }
+
+  const finallyBlock = node.finallyBlock
+    ? `finally ${buildBlock(node.finallyBlock, sourceFile, indentLevel + 2, [])}`
     : '';
 
-  const finallyBlock = node.finallyBlock ? `finally {}` : '';
-
   const indent = ' '.repeat(indentLevel);
-  const tryStmt = `${indent}try {}${EOL}${indent}${catchClause} {}${EOL}${indent}${finallyBlock}`;
-  return tryStmt;
+  return `${indent}try ${tryBlock}${EOL}${indent}${catchClause}${EOL}${indent}${finallyBlock}`;
 }
 
 // --- inside blocks ---

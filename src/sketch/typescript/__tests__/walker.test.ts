@@ -1124,5 +1124,130 @@ function test() {
         );
       });
     });
+
+    describe('applies all minimization rules on other blocks', () => {
+      const blockCode = `
+  function internalFnDecl(name, age) {}
+
+  for (let i = 0; i < 10; i++) {}
+
+  const a = 1
+  const b = a + limit
+  const c = !isValid
+
+  const user = { name: 'alice' }
+  const name = user.name
+  const id = user[key]
+
+  const local = [1, 2, 3]
+  const arr1 = [1, local + 1, !true, local.length, local[0]]
+  const arr2 = [1, external + 1]
+
+  const obj1 = { x: local + 1, y: !true, z: local.length, w: local[0] }
+  const obj2 = { x: external + 1 }
+
+  log()
+  await fetchUser()
+  local.push(getLevel())
+
+  throw new Error('message')
+`;
+
+      const getExpected = (startLine: number) => `
+  function internalFnDecl(name, age) {} // @location-line: ${startLine}
+  for (let i = 0; i < 10; i++) {} // @location-line: ${startLine + 2}
+  const b = a + limit // @location-line: ${startLine + 5}
+  const c = !isValid // @location-line: ${startLine + 6}
+  const id = user[key] // @location-line: ${startLine + 10}
+  const arr2 = [1, external + 1] // @location-line: ${startLine + 14}
+  const obj2 = { x: external + 1 } // @location-line: ${startLine + 17}
+  log() // @location-line: ${startLine + 19}
+  await fetchUser() // @location-line: ${startLine + 20}
+  local.push(getLevel()) // @location-line: ${startLine + 21}
+  throw new Error('message') // @location-line: ${startLine + 23}`;
+
+      const runTest = async (code: string, expected: string) => {
+        vi.mocked(fs.readFile).mockResolvedValue(code);
+
+        const result = await minimize('dummy.ts');
+
+        expect(result.sketch.trim()).toBe(expected.trim());
+      };
+
+      it('if/else if/else', async () => {
+        const code = `
+if (x > 18) {
+  ${blockCode.trim()}
+}`;
+        const expected = `
+// @location-range: 2 - 27
+if (x > 18) {
+  ${getExpected(3).trim()}
+}`;
+        await runTest(code, expected);
+      });
+
+      it('for loop', async () => {
+        const code = `
+for (let i = 0; i < 5; i++) {
+  ${blockCode.trim()}
+}`;
+        const expected = `
+// @location-range: 2 - 27
+for (let i = 0; i < 5; i++) {
+  ${getExpected(3).trim()}
+}`;
+        await runTest(code, expected);
+      });
+
+      it('while loop', async () => {
+        const code = `
+while (true) {
+  ${blockCode.trim()}
+}`;
+        const expected = `
+// @location-range: 2 - 27
+while (true) {
+  ${getExpected(3).trim()}
+}`;
+        await runTest(code, expected);
+      });
+
+      it('do while loop', async () => {
+        const code = `
+do {
+  ${blockCode.trim()}
+} while (true)`;
+        const expected = `
+// @location-range: 2 - 27
+do {
+  ${getExpected(3).trim()}
+} while (true)`;
+        await runTest(code, expected);
+      });
+
+      it('try catch finally', async () => {
+        const code = `
+try {
+  ${blockCode.trim()}
+} catch (error) {
+  ${blockCode.trim()}
+} finally {
+  ${blockCode.trim()}
+}`;
+        const expected = `
+// @location-range: 2 - 77
+try {
+  ${getExpected(3).trim()}
+}
+catch (error) {
+  ${getExpected(28).trim()}
+}
+finally {
+  ${getExpected(53).trim()}
+}`;
+        await runTest(code, expected);
+      });
+    });
   });
 });
